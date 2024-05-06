@@ -1,0 +1,33 @@
+# Setup models for tests
+library("testthat")
+library("mvgam")
+
+expect_match2 <- function(object, regexp) {
+  any(grepl(regexp, object, fixed = TRUE))
+}
+
+expect_ggplot <- function(object, ...) {
+  testthat::expect_true(is(object, "ggplot"), ...)
+}
+
+expect_loo <- function(object, ...) {
+  testthat::expect_true(is(object, "psis_loo"), ...)
+}
+
+SM <- suppressMessages
+SW <- suppressWarnings
+
+#ptm <- proc.time()
+set.seed(100)
+beta_data <- sim_mvgam(family = betar(),
+                       trend_model = 'GP',
+                       trend_rel = 0.5,
+                       T = 60)
+gaus_data <- sim_mvgam(family = gaussian(),
+                       T = 60,
+                       trend_model = 'AR1',
+                       seasonality = 'shared',
+                       mu = c(-1, 0, 1),
+                       trend_rel = 0.5,
+                       prop_missing = 0.2)
+#cat(paste0('setup took:\n')); proc.time() - ptm
