@@ -3,8 +3,10 @@
 #' @importFrom stats pnorm ppois plogis gaussian poisson Gamma dnbinom rnbinom dnorm dbeta
 #' @importFrom stats binomial rbinom pbinom dbinom qbinom qlogis
 #' @importFrom brms lognormal student bernoulli rstudent_t qstudent_t dstudent_t pstudent_t dbeta_binomial rbeta_binomial pbeta_binomial
+#' @importFrom mgcv betar nb
 #' @param link a specification for the family link function. At present these cannot
 #' be changed
+#' @param ... Arguments to be passed to the \pkg{mgcv} version of the associated functions
 #' @details \code{mvgam} currently supports the following standard observation families:
 #'\itemize{
 #'   \item \code{\link[stats]{gaussian}} with identity link, for real-valued data
@@ -20,6 +22,8 @@
 #'   \item \code{\link[mgcv]{nb}} with log-link, for count data
 #'   \item \code{\link[brms]{lognormal}} with identity-link, for non-negative real-valued data
 #'   \item \code{\link[brms]{bernoulli}} with logit-link, for binary data
+#'   \item \code{\link[brms]{beta_binomial}} with logit-link, as for `binomial()` but allows
+#'   for overdispersion
 #'   }
 #'
 #'Finally, \code{mvgam} supports the three extended families described here:
@@ -65,8 +69,20 @@ student_t = function(link = 'identity'){
 }
 
 #' @rdname mvgam_families
+#' @export
+betar = function(...){
+  mgcv::betar(...)
+}
+
+#' @rdname mvgam_families
+#' @export
+nb = function(...){
+  mgcv::nb(...)
+}
+
+#' @rdname mvgam_families
 #' @examples
-#' \dontrun{
+#' \donttest{
 #' # Example showing how to set up N-mixture models
 #' set.seed(999)
 #'# Simulate observations for species 1, which shows a declining trend and 0.7 detection probability
@@ -160,15 +176,13 @@ student_t = function(link = 'identity'){
 #'             # priors can be set in the usual way
 #'             priors = c(prior(std_normal(), class = b),
 #'                        prior(normal(1, 1.5), class = Intercept_trend)),
-#'             burnin = 300,
-#'             samples = 300,
 #'             chains = 2)
 #'
 #' # The usual diagnostics
 #' summary(mod)
 #'
 #' # Plotting conditional effects
-#' library(ggplot2)
+#' library(ggplot2); library(marginaleffects)
 #' plot_predictions(mod, condition = 'species',
 #'                  type = 'detection') +
 #'      ylab('Pr(detection)') +
@@ -852,26 +866,6 @@ family_par_names = function(family){
   }
 
   return(out)
-}
-
-#' Family specific initial value functions for Stan
-#' @noRd
-family_inits = function(family, trend_model,
-                        smooths_included, model_data){
-
-  # No longer specifying inits for family- or trend-specific parameters
-  # as there is a risk the user will place bounds on priors that conflict
-  # with the inits. Just let Stan choose reasonable and diffuse inits,
-  # this is better anyway for sampling
-  inits <- function() {
-    if(model_data$num_basis == 1){
-      list(b_raw = array(runif(model_data$num_basis, -2, 2)))
-    } else {
-      list(b_raw = runif(model_data$num_basis, -2, 2))
-    }
-  }
-
-  return(inits)
 }
 
 #' Define which parameters to monitor / extract

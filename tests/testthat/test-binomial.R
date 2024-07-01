@@ -84,10 +84,12 @@ test_that("binomial() post-processing works", {
                trend_formula = ~ s(x, by = trend),
                family = binomial(),
                trend_model = AR(),
+               noncentred = TRUE,
                data = dat_train,
                burnin = 500,
                samples = 200,
-               chains = 2))
+               chains = 2,
+               silent = 2))
   expect_no_error(capture_output(summary(mod)))
   expect_no_error(capture_output(code(mod)))
   expect_no_error(capture_output(print(mod)))
@@ -154,11 +156,13 @@ test_that("binomial() post-processing works", {
                   trend_formula = ~ s(x, by = trend),
                   family = binomial(),
                   trend_model = AR(),
+                  noncentred = TRUE,
                   data = dat_train,
                   newdata = dat_test,
                   burnin = 200,
                   samples = 200,
-                  chains = 2))
+                  chains = 2,
+                  silent = 2))
   fc <- forecast(mod)
   expect_true(inherits(fc, 'mvgam_forecast'))
   expect_no_error(plot_mvgam_uncertainty(mod))
@@ -277,11 +281,13 @@ test_that("bernoulli() post-processing works", {
                  gp(x, by = series, c = 5/4, k = 5),
                trend_model = AR(),
                priors = prior(normal(0, 0.1), class = ar1),
+               noncentred = TRUE,
                family = bernoulli(),
                data = dat_train,
                burnin = 200,
                samples = 200,
-               chains = 2))
+               chains = 2,
+               silent = 2))
 
   expect_no_error(capture_output(summary(mod)))
   expect_no_error(capture_output(print(mod)))
@@ -295,7 +301,6 @@ test_that("bernoulli() post-processing works", {
 
   expect_no_error(ppc(mod))
   expect_no_error(ppc(mod, type = 'density'))
-  expect_no_error(ppc(mod, type = 'mean'))
   expect_no_error(ppc(mod, type = 'pit'))
   expect_no_error(ppc(mod, type = 'cdf'))
 

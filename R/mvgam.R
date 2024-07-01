@@ -74,11 +74,12 @@
 #'   \item`student_t()` for real-valued data
 #'   \item`Gamma()` for non-negative real-valued data
 #'   \item`bernoulli()` for binary data
-#'   \item`nb()` for count data
 #'   \item`poisson()` for count data
+#'   \item`nb()` for overdispersed count data
 #'   \item`binomial()` for count data with imperfect detection when the number of trials is known;
-#'   note that the `cbind()` function must be used to bind the discrete observations and the number
+#'   note that the `cbind()` function must be used to bind the discrete observations and the discrete number
 #'   of trials
+#'   \item`beta_binomial()` as for `binomial()` but allows for overdispersion
 #'   \item`nmix()` for count data with imperfect detection when the number of trials
 #'   is unknown and should be modeled via a State-Space N-Mixture model.
 #'   The latent states are Poisson, capturing the 'true' latent
@@ -130,6 +131,11 @@
 #'the drift parameter can become unidentifiable, especially if an intercept term is included in the GAM linear
 #'predictor (which it is by default when calling \code{\link[mgcv]{jagam}}). Drift parameters will also likely
 #'be unidentifiable if using dynamic factor models. Therefore this defaults to \code{FALSE}
+#'@param noncentred \code{logical} experimental feature to use the non-centred parameterisation for
+#'trend models. Only available for certain trend models
+#'(i.e. `RW()`, `AR()`, or `CAR()` with or without `drift`, or for
+#'`trend = 'None'` when using a `trend_formula`). Not yet available for moving average or
+#'correlated error models
 #'@param chains \code{integer} specifying the number of parallel chains for the model. Ignored
 #'if `algorithm %in% c('meanfield', 'fullrank', 'pathfinder', 'laplace')`
 #'@param burnin \code{integer} specifying the number of warmup iterations of the Markov chain to run
@@ -198,6 +204,11 @@
 #'The step size used by the numerical integrator is a function of `adapt_delta` in that increasing
 #'`adapt_delta` will result in a smaller step size and fewer divergences. Increasing `adapt_delta` will
 #'typically result in a slower sampler, but it will always lead to a more robust sampler
+#'@param silent Verbosity level between `0` and `2`. If `1` (the default), most of the informational
+#'messages of compiler and sampler are suppressed. If `2`, even more messages are suppressed. The
+#'actual sampling progress is still printed. Set `refresh = 0` to turn this off as well. If using
+#'`backend = "rstan"` you can also set open_progress = FALSE to prevent opening additional
+#'progress bars.
 #'@param jags_path Optional character vector specifying the path to the location of the `JAGS` executable (.exe) to use
 #'for modelling if `use_stan == FALSE`. If missing, the path will be recovered from a call to \code{\link[runjags]{findjags}}
 #'@param ... Further arguments passed to Stan.
@@ -306,8 +317,13 @@
 #'@examples
 #'\donttest{
 #'# Simulate a collection of three time series that have shared seasonal dynamics
-# # and independent random walk trends, with a Poisson observation process
-#'dat <- sim_mvgam(T = 80, n_series = 3, prop_missing = 0.1,
+#'# and independent AR1 trends, with a Poisson observation process
+#'set.seed(0)
+#'dat <- sim_mvgam(T = 80,
+#'                 n_series = 3,
+#'                 mu = 2,
+#'                 trend_model = AR(p = 1),
+#'                 prop_missing = 0.1,
 #'                 prop_trend = 0.6)
 #'
 #'# Plot key summary statistics for a single series
@@ -317,23 +333,25 @@
 #'plot_mvgam_series(data = dat$data_train, series = 'all')
 #'
 #'# Formulate a model using Stan where series share a cyclic smooth for
-#'# seasonality and each series has an independent random walk temporal process;
+#'# seasonality and each series has an independent AR1 temporal process;
 #'# Set run_model = FALSE to inspect the returned objects
 #'mod1 <- mvgam(formula = y ~ s(season, bs = 'cc', k = 6),
 #'              data = dat$data_train,
-#'              trend_model = RW(),
+#'              trend_model = AR(),
 #'              family = poisson(),
+#'              noncentred = TRUE,
 #'              use_stan = TRUE,
 #'              run_model = FALSE)
 #'
 #' # View the model code in Stan language
 #' code(mod1)
 #'
-#' # Now fit the model
+#' # Now fit the model, noting that 'noncentred = TRUE' will likely give performance gains
 #' mod1 <- mvgam(formula = y ~ s(season, bs = 'cc', k = 6),
 #'               data = dat$data_train,
-#'               trend_model = RW(),
+#'               trend_model = AR(),
 #'               family = poisson(),
+#'               noncentred = TRUE,
 #'               chains = 2)
 #'
 #' # Extract the model summary
@@ -366,6 +384,7 @@
 #' plot(mod1, type = 'smooths', realisations = TRUE)
 #'
 #' # Plot conditional response predictions using marginaleffects
+#' library(marginaleffects)
 #' conditional_effects(mod1)
 #' plot_predictions(mod1, condition = 'season', points = 0.5)
 #'
@@ -403,7 +422,7 @@
 #'              chains = 2)
 #'
 #' # The mapping matrix is now supplied as data to the model in the 'Z' element
-#' mod1$model_data$Z
+#' mod$model_data$Z
 #' code(mod)
 #'
 #' # The first two series share an identical latent trend; the third is different
@@ -460,7 +479,8 @@
 #' # Example showing how to incorporate an offset; simulate some count data
 #' # with different means per series
 #' set.seed(100)
-#' dat <- sim_mvgam(prop_trend = 0, mu = c(0, 2, 2), seasonality = 'hierarchical')
+#' dat <- sim_mvgam(prop_trend = 0, mu = c(0, 2, 2),
+#'                  seasonality = 'hierarchical')
 #'
 #' # Add offset terms to the training and testing data
 #' dat$data_train$offset <- 0.5 * as.numeric(dat$data_train$series)
@@ -571,6 +591,7 @@ mvgam = function(formula,
                  trend_map,
                  trend_model = 'None',
                  drift = FALSE,
+                 noncentred = FALSE,
                  chains = 4,
                  burnin = 500,
                  samples = 500,
@@ -586,8 +607,9 @@ mvgam = function(formula,
                  algorithm = getOption("brms.algorithm", "sampling"),
                  autoformat = TRUE,
                  save_all_pars = FALSE,
-                 max_treedepth,
-                 adapt_delta,
+                 max_treedepth = 12,
+                 adapt_delta = 0.85,
+                 silent = 1,
                  jags_path,
                  ...){
 
@@ -601,7 +623,9 @@ mvgam = function(formula,
 
   # Validate trend_model
   orig_trend_model <- trend_model
-  trend_model <- validate_trend_model(orig_trend_model, drift = drift)
+  trend_model <- validate_trend_model(orig_trend_model,
+                                      drift = drift,
+                                      noncentred = noncentred)
 
   # Ensure series and time variables are present
   data_train <- validate_series_time(data_train, name = 'data',
@@ -618,6 +642,7 @@ mvgam = function(formula,
   validate_pos_integer(burnin)
   validate_pos_integer(samples)
   validate_pos_integer(thin)
+  validate_silent(silent)
 
   # Upper bounds no longer supported as they are fairly useless
   upper_bounds <- rlang::missing_arg()
@@ -660,7 +685,6 @@ mvgam = function(formula,
         max(data_train$index..time..index)
     }
   }
-
 
   # Lighten the final object if this is an lfo run
   if(lfo) return_model_data <- FALSE
@@ -715,7 +739,7 @@ mvgam = function(formula,
   # Some general family-level restrictions can now be checked
   orig_y <- data_train$y
   if(any(!is.na(orig_y))){
-    validate_family_resrictions(response = orig_y, family = family)
+    validate_family_restrictions(response = orig_y, family = family)
   }
 
   # Fill in missing observations in data_train so the size of the dataset is correct when
@@ -735,7 +759,7 @@ mvgam = function(formula,
   if(use_stan){
     def_priors <- adapt_brms_priors(c(make_default_scales(orig_y,
                                                           family),
-                                      make_default_int(orig_y,
+                                              make_default_int(orig_y,
                                                        family = if(add_nmix){
                                                          nmix()
                                                        } else {
@@ -854,8 +878,17 @@ mvgam = function(formula,
   # For monotonic smooths, need to determine which direction to place
   # coefficient constraints
   smooth_labs <- do.call(rbind, lapply(seq_along(ss_gam$smooth), function(x){
-    data.frame(label = ss_gam$smooth[[x]]$label, class = class(ss_gam$smooth[[x]])[1])
+    data.frame(label = ss_gam$smooth[[x]]$label,
+               class = class(ss_gam$smooth[[x]])[1],
+               id = ifelse(is.null(ss_gam$smooth[[x]]$id),
+                           NA, ss_gam$smooth[[x]]$id))
   }))
+
+  # Check for 'id' arguments, which are not yet supported
+  if(any(!is.na(smooth_labs$id))){
+    stop('smooth terms with the "id" argument not yet supported by mvgam',
+         call. = FALSE)
+  }
 
   if(any(smooth_labs$class == 'random.effect')){
     re_smooths <- smooth_labs %>%
@@ -1348,9 +1381,9 @@ mvgam = function(formula,
       param <- c(param, 'mu_raw', 'sigma_raw')
     }
 
-    # Sensible inits needed for the betas
-    inits <- family_inits(family = family_char, trend_model,
-                          smooths_included, model_data)
+    # Don't place inits when using Stan; may add options later for users
+    # to supply them though
+    inits <- NULL
 
     # Include any GP term updates
     if(!is.null(gp_terms)){
@@ -1359,7 +1392,8 @@ mvgam = function(formula,
                                         newdata = data_test,
                                         model_data = stan_objects$model_data,
                                         mgcv_model = ss_gam,
-                                        gp_terms = gp_terms)
+                                        gp_terms = gp_terms,
+                                        family = family)
       stan_objects$model_data <- gp_additions$model_data
       ss_gam <- gp_additions$mgcv_model
 
@@ -1380,6 +1414,7 @@ mvgam = function(formula,
                                      family = family_char,
                                      threads = threads,
                                      trend_model = trend_model,
+                                     use_lv = use_lv,
                                      offset = offset,
                                      drift = drift)
 
@@ -1406,8 +1441,8 @@ mvgam = function(formula,
       vectorised$model_file <- trend_map_setup$model_file
       vectorised$model_data <- trend_map_setup$model_data
 
-      if(trend_model %in% c('RW', 'AR1', 'AR2', 'AR3', 'CAR1')){
-        param <- c(param, 'sigma')
+      if(trend_model %in% c('None', 'RW', 'AR1', 'AR2', 'AR3', 'CAR1')){
+        param <- unique(c(param, 'trend', 'sigma'))
       }
 
       # If trend formula specified, add the predictors for the trend models
@@ -1435,7 +1470,7 @@ mvgam = function(formula,
         vectorised$model_data <- trend_pred_setup$model_data
         trend_mgcv_model <- trend_pred_setup$trend_mgcv_model
 
-        param <- c(param, 'b_trend', 'trend_mus')
+        param <- unique(c(param, 'trend', 'b_trend', 'trend_mus'))
 
         if(trend_pred_setup$trend_smooths_included){
           param <- c(param, 'rho_trend', 'lambda_trend')
@@ -1558,11 +1593,24 @@ mvgam = function(formula,
 
     # Add in any user-specified priors
     if(!missing(priors)){
-      vectorised$model_file <- update_priors(vectorised$model_file, priors,
+      vectorised$model_file <- update_priors(vectorised$model_file,
+                                             priors,
                                              use_stan = TRUE)
     } else {
       priors <- NULL
     }
+
+    # Check if non-centering can be used
+    nc_check <- check_noncent(model_file = vectorised$model_file,
+                              noncentred = noncentred,
+                              use_lv = use_lv,
+                              trend_map = trend_map,
+                              add_ma = add_ma,
+                              add_cor = add_cor,
+                              trend_model = trend_model,
+                              drift = drift,
+                              silent = silent)
+    vectorised$model_file <- nc_check$model_file; noncentred <- nc_check$noncentred
 
     # Add any correlated error or moving average processes; this comes after
     # priors as currently there is no option to change priors on these parameters
@@ -1623,7 +1671,8 @@ mvgam = function(formula,
            cmdstanr::cmdstan_version() >= "2.29.0") {
           vectorised$model_file <- .autoformat(vectorised$model_file,
                                                overwrite_file = FALSE,
-                                               backend = 'cmdstanr')
+                                               backend = 'cmdstanr',
+                                               silent = silent >= 1L)
         }
         vectorised$model_file <- readLines(textConnection(vectorised$model_file),
                                            n = -1)
@@ -1633,10 +1682,12 @@ mvgam = function(formula,
         if(autoformat){
           vectorised$model_file <- .autoformat(vectorised$model_file,
                                                overwrite_file = FALSE,
-                                               backend = 'rstan')
+                                               backend = 'rstan',
+                                               silent = silent >= 1L)
           vectorised$model_file <- readLines(textConnection(vectorised$model_file),
                                              n = -1)
         }
+
       # Replace new syntax if this is an older version of Stan
       if(rstan::stan_version() < "2.26"){
         warning('Your version of rstan is out of date. Some features of mvgam may not work')
@@ -1793,261 +1844,45 @@ mvgam = function(formula,
       }
 
       if(use_cmdstan){
-        message('Using cmdstanr as the backend')
-        message()
-        if(cmdstanr::cmdstan_version() < "2.26.0"){
-          warning('Your version of Cmdstan is < 2.26.0; some mvgam models may not work properly!')
-        }
-
-        if(algorithm == 'pathfinder'){
-          if(cmdstanr::cmdstan_version() < "2.33"){
-            stop('Your version of Cmdstan is < 2.33; the "pathfinder" algorithm is not available',
-                 call. = FALSE)
-          }
-
-          if(utils::packageVersion('cmdstanr') < '0.6.1.9000'){
-            stop('Your version of cmdstanr is < 0.6.1.9000; the "pathfinder" algorithm is not available',
-                 call. = FALSE)
-          }
-        }
-
-        # Prepare threading
-        if(cmdstanr::cmdstan_version() >= "2.29.0"){
-          if(threads > 1){
-            cmd_mod <- cmdstanr::cmdstan_model(cmdstanr::write_stan_file(vectorised$model_file),
-                                               stanc_options = list('O1'),
-                                               cpp_options = list(stan_threads = TRUE))
-          } else {
-            cmd_mod <- cmdstanr::cmdstan_model(cmdstanr::write_stan_file(vectorised$model_file),
-                                               stanc_options = list('O1'))
-          }
-
-        } else {
-          if(threads > 1){
-            cmd_mod <- cmdstanr::cmdstan_model(cmdstanr::write_stan_file(vectorised$model_file),
-                                               cpp_options = list(stan_threads = TRUE))
-          } else {
-            cmd_mod <- cmdstanr::cmdstan_model(cmdstanr::write_stan_file(vectorised$model_file))
-          }
-        }
-
-        if(missing(max_treedepth)){
-          max_treedepth <- 12
-        }
-        if(missing(adapt_delta)){
-          adapt_delta <- 0.85
-        }
+        # Prepare threading and generate the model
+        cmd_mod <- .model_cmdstanr(vectorised$model_file,
+                                   threads = threads,
+                                   silent = silent)
 
         # Condition the model using Cmdstan
-        if(algorithm == 'sampling'){
-          if(prior_simulation){
-            if(parallel){
-              fit1 <- cmd_mod$sample(data = model_data,
-                                     chains = chains,
-                                     parallel_chains = min(c(chains, parallel::detectCores() - 1)),
-                                     threads_per_chain = if(threads > 1){ threads } else { NULL },
-                                     refresh = 100,
-                                     init = inits,
-                                     max_treedepth = 12,
-                                     adapt_delta = 0.8,
-                                     iter_sampling = samples,
-                                     iter_warmup = 200,
-                                     show_messages = FALSE,
-                                     diagnostics = NULL,
-                                     ...)
-            } else {
-              fit1 <- cmd_mod$sample(data = model_data,
-                                     chains = chains,
-                                     threads_per_chain = if(threads > 1){ threads } else { NULL },
-                                     refresh = 100,
-                                     init = inits,
-                                     max_treedepth = 12,
-                                     adapt_delta = 0.8,
-                                     iter_sampling = samples,
-                                     iter_warmup = 200,
-                                     show_messages = FALSE,
-                                     diagnostics = NULL,
-                                     ...)
-            }
-
-          } else {
-            if(parallel){
-              fit1 <- cmd_mod$sample(data = model_data,
-                                     chains = chains,
-                                     parallel_chains = min(c(chains, parallel::detectCores() - 1)),
-                                     threads_per_chain = if(threads > 1){ threads } else { NULL },
-                                     refresh = 100,
-                                     init = inits,
-                                     max_treedepth = max_treedepth,
-                                     adapt_delta = adapt_delta,
-                                     iter_sampling = samples,
-                                     iter_warmup = burnin,
-                                     ...)
-            } else {
-              fit1 <- cmd_mod$sample(data = model_data,
-                                     chains = chains,
-                                     threads_per_chain = if(threads > 1){ threads } else { NULL },
-                                     refresh = 100,
-                                     init = inits,
-                                     max_treedepth = max_treedepth,
-                                     adapt_delta = adapt_delta,
-                                     iter_sampling = samples,
-                                     iter_warmup = burnin,
-                                     ...)
-            }
-          }
-        }
-
-        if(algorithm %in% c('meanfield', 'fullrank')){
-          param <- param[!param %in% 'lp__']
-          fit1 <- cmd_mod$variational(data = model_data,
-                                      threads = if(threads > 1){ threads } else { NULL },
-                                      refresh = 500,
-                                      output_samples = samples,
-                                      algorithm = algorithm,
-                                      ...)
-        }
-
-        if(algorithm %in% c('laplace')){
-          param <- param[!param %in% 'lp__']
-          fit1 <- cmd_mod$laplace(data = model_data,
-                                     threads = if(threads > 1){ threads } else { NULL },
-                                     refresh = 500,
-                                     draws = samples,
-                                     ...)
-        }
-
-        if(algorithm %in% c('pathfinder')){
-          param <- param[!param %in% 'lp__']
-          fit1 <- cmd_mod$pathfinder(data = model_data,
-                                      num_threads = if(threads > 1){ threads } else { NULL },
-                                      refresh = 500,
-                                      draws = samples,
-                                      ...)
-        }
-
-        # Convert model files to stan_fit class for consistency
-        if(save_all_pars){
-          out_gam_mod <- read_csv_as_stanfit(fit1$output_files())
-        } else {
-          out_gam_mod <- read_csv_as_stanfit(fit1$output_files(),
-                                             variables = param)
-        }
-
-        out_gam_mod <- repair_stanfit(out_gam_mod)
-
-        if(algorithm %in% c('meanfield', 'fullrank',
-                            'pathfinder', 'laplace')){
-          out_gam_mod@sim$iter <- samples
-          out_gam_mod@sim$thin <- 1
-          out_gam_mod@stan_args[[1]]$method <- 'sampling'
-        }
+        out_gam_mod <- .sample_model_cmdstanr(model = cmd_mod,
+                                              algorithm = algorithm,
+                                              prior_simulation = prior_simulation,
+                                              data = model_data,
+                                              chains = chains,
+                                              parallel = parallel,
+                                              silent = silent,
+                                              max_treedepth = max_treedepth,
+                                              adapt_delta = adapt_delta,
+                                              threads = threads,
+                                              burnin = burnin,
+                                              samples = samples,
+                                              param = param,
+                                              save_all_pars = save_all_pars,
+                                              ...)
 
       } else {
+        # Condition the model using rstan
         requireNamespace('rstan', quietly = TRUE)
-        message('Using rstan as the backend')
-        message()
-
-        if(rstan::stan_version() < "2.26.0"){
-          warning('Your version of Stan is < 2.26.0; some mvgam models may not work properly!')
-        }
-
-        if(algorithm == 'pathfinder'){
-          stop('The "pathfinder" algorithm is not yet available in rstan',
-               call. = FALSE)
-        }
-
-        if(algorithm == 'laplace'){
-          stop('The "laplace" algorithm is not yet available in rstan',
-               call. = FALSE)
-        }
-        options(mc.cores = parallel::detectCores())
-
-        # Fit the model in rstan using custom control parameters
-        if(missing(max_treedepth)){
-          max_treedepth <- 12
-        }
-
-        if(missing(adapt_delta)){
-          adapt_delta <- 0.85
-        }
-
-        if(threads > 1){
-          if(utils::packageVersion("rstan") >= "2.26") {
-            threads_per_chain_def <- rstan::rstan_options("threads_per_chain")
-            on.exit(rstan::rstan_options(threads_per_chain = threads_per_chain_def))
-            rstan::rstan_options(threads_per_chain = threads)
-          } else {
-            stop("Threading is not supported by backend 'rstan' version ",
-                  utils::packageVersion("rstan"), ".",
-                 call. = FALSE)
-          }
-        }
-
-        message("Compiling the Stan program...")
-        message()
-        stan_mod <- rstan::stan_model(model_code = vectorised$model_file,
-                                      verbose = TRUE)
-        if(samples <= burnin){
-          samples <- burnin + samples
-        }
-
-        if(prior_simulation){
-          burnin <- 200
-          samples <- 600
-          adapt_delta <- 0.8
-          max_treedepth <- 12
-        }
-
-        stan_control <- list(max_treedepth = max_treedepth,
-                             adapt_delta = adapt_delta)
-
-        if(algorithm == 'sampling'){
-          if(parallel){
-            fit1 <- rstan::sampling(stan_mod,
-                                    iter = samples,
-                                    warmup = burnin,
-                                    chains = chains,
-                                    data = model_data,
-                                    cores = min(c(chains, parallel::detectCores() - 1)),
-                                    init = inits,
-                                    verbose = FALSE,
-                                    thin = thin,
-                                    control = stan_control,
-                                    pars = NA,
-                                    refresh = 100,
-                                    save_warmup = FALSE,
-                                    ...)
-          } else {
-            fit1 <- rstan::sampling(stan_mod,
-                                    iter = samples,
-                                    warmup = burnin,
-                                    chains = chains,
-                                    data = model_data,
-                                    cores = 1,
-                                    init = inits,
-                                    verbose = FALSE,
-                                    thin = thin,
-                                    control = stan_control,
-                                    pars = NA,
-                                    refresh = 100,
-                                    save_warmup = FALSE,
-                                    ...)
-          }
-        }
-
-        if(algorithm %in% c('fullrank', 'meanfield')){
-          param <- param[!param %in% 'lp__']
-          fit1 <- rstan::vb(stan_mod,
-                            output_samples = samples,
-                            data = model_data,
-                            algorithm = algorithm,
-                            pars = NA,
-                            ...)
-        }
-
-        out_gam_mod <- fit1
-        out_gam_mod <- repair_stanfit(out_gam_mod)
+        out_gam_mod <- .sample_model_rstan(model = vectorised$model_file,
+                                           algorithm = algorithm,
+                                           prior_simulation = prior_simulation,
+                                           data = model_data,
+                                           chains = chains,
+                                           parallel = parallel,
+                                           silent = silent,
+                                           max_treedepth = max_treedepth,
+                                           adapt_delta = adapt_delta,
+                                           threads = threads,
+                                           burnin = burnin,
+                                           samples = samples,
+                                           thin = thin,
+                                           ...)
       }
     }
 
@@ -2190,7 +2025,13 @@ mvgam = function(formula,
 
   #### Return the output as class mvgam ####
   trim_data <- list()
+  attr(model_data, 'trend_model') <- trend_model
   attr(trim_data, 'trend_model') <- trend_model
+  attr(model_data, 'noncentred') <- if(noncentred) TRUE else NULL
+  attr(trim_data, 'noncentred') <- if(noncentred) TRUE else NULL
+  attr(model_data, 'threads') <- threads
+  attr(trim_data, 'threads') <- threads
+
   output <- structure(list(call = orig_formula,
                            trend_call = if(!missing(trend_formula)){
                              trend_formula

@@ -35,12 +35,15 @@
 #'only a single focal series is highlighted, with all remaining series shown as faint gray lines.
 #'@examples
 #'# Simulate and plot series with observations bounded at 0 and 1 (Beta responses)
-#'sim_data <- sim_mvgam(family = betar(), trend_model = RW(), prop_trend = 0.6)
+#'sim_data <- sim_mvgam(family = betar(),
+#'                      trend_model = RW(), prop_trend = 0.6)
 #'plot_mvgam_series(data = sim_data$data_train, series = 'all')
-#'plot_mvgam_series(data = sim_data$data_train, newdata = sim_data$data_test, series = 1)
+#'plot_mvgam_series(data = sim_data$data_train,
+#'                  newdata = sim_data$data_test, series = 1)
 #'
 #'# Now simulate series with overdispersed discrete observations
-#'sim_data <- sim_mvgam(family = nb(), trend_model = RW(), prop_trend = 0.6, phi = 10)
+#'sim_data <- sim_mvgam(family = nb(), trend_model = RW(),
+#'                      prop_trend = 0.6, phi = 10)
 #'plot_mvgam_series(data = sim_data$data_train, series = 'all')
 #'@export
 plot_mvgam_series = function(object,
@@ -327,8 +330,8 @@ plot_mvgam_series = function(object,
                                 length.out = 6)))
 
       title('Time series', line = 0)
-      title(ylab = ylab, line = 1.5)
-      title(xlab = "Time", line = 1.5)
+      title(ylab = ylab, line = 1.85)
+      title(xlab = "Time", line = 1.85)
 
       if(lines){
         lines(x = 1:length(truth), y = truth, lwd = 2, col = "#8F2727")
@@ -358,8 +361,8 @@ plot_mvgam_series = function(object,
            xlab = '',
            main = '')
       title('Histogram', line = 0)
-      title(ylab = 'Density', line = 1.5)
-      title(xlab = paste0(y), line = 1.5)
+      title(ylab = 'Density', line = 1.85)
+      title(xlab = paste0(y), line = 1.85)
 
       acf(c(truth, test),
           na.action = na.pass, bty = 'L',
@@ -374,8 +377,8 @@ plot_mvgam_series = function(object,
       abline(h = -clim,  col = 'black', lwd = 2.5, lty = 'dashed')
       box(bty = 'L', lwd = 2)
       title('ACF', line = 0)
-      title(ylab = 'Autocorrelation', line = 1.5)
-      title(xlab = 'Lag', line = 1.5)
+      title(ylab = 'Autocorrelation', line = 1.85)
+      title(xlab = 'Lag', line = 1.85)
 
       ecdf_plotdat = function(vals, x){
         func <- ecdf(vals)
@@ -392,8 +395,8 @@ plot_mvgam_series = function(object,
            xlim = c(min(plot_x), max(plot_x)),
            ylim = c(0, 1))
       title('CDF', line = 0)
-      title(ylab = 'Empirical CDF', line = 1.5)
-      title(xlab = paste0(y), line = 1.5)
+      title(ylab = 'Empirical CDF', line = 1.85)
+      title(xlab = paste0(y), line = 1.85)
       lines(x = plot_x,
             y = ecdf_plotdat(c(truth, test),
                              plot_x),
@@ -423,8 +426,8 @@ plot_mvgam_series = function(object,
       }
 
       title('Time series', line = 0)
-      title(ylab = ylab, line = 1.5)
-      title(xlab = "Time", line = 1.5)
+      title(ylab = ylab, line = 1.85)
+      title(xlab = "Time", line = 1.85)
 
       if(lines){
         lines(x = 1:length(truth), y = truth, lwd = 2, col = "#8F2727")
@@ -448,8 +451,8 @@ plot_mvgam_series = function(object,
            xlab = '',
            main = '')
       title('Histogram', line = 0)
-      title(ylab = 'Density', line = 1.5)
-      title(xlab = paste0(y), line = 1.5)
+      title(ylab = 'Density', line = 1.85)
+      title(xlab = paste0(y), line = 1.85)
 
 
       acf(c(truth),
@@ -465,8 +468,8 @@ plot_mvgam_series = function(object,
       abline(h = -clim,  col = 'black', lwd = 2.5, lty = 'dashed')
       box(bty = 'L', lwd = 2)
       title('ACF', line = 0)
-      title(ylab = 'Autocorrelation', line = 1.5)
-      title(xlab = 'Lag', line = 1.5)
+      title(ylab = 'Autocorrelation', line = 1.85)
+      title(xlab = 'Lag', line = 1.85)
 
 
       ecdf_plotdat = function(vals, x){
@@ -483,8 +486,8 @@ plot_mvgam_series = function(object,
            xlim = c(min(plot_x), max(plot_x)),
            ylim = c(0, 1))
       title('CDF', line = 0)
-      title(ylab = 'Empirical CDF', line = 1.5)
-      title(xlab = paste0(y), line = 1.5)
+      title(ylab = 'Empirical CDF', line = 1.85)
+      title(xlab = paste0(y), line = 1.85)
       lines(x = plot_x,
             y = ecdf_plotdat(truth,
                              plot_x),

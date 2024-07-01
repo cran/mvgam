@@ -22,14 +22,13 @@
 #'   \code{robust}). The remaining columns starting with \code{Q} contain
 #'   quantile estimates as specified via argument \code{probs}.
 #' @examples
-#' \dontrun{
+#' \donttest{
 #' # Simulate some data and fit a model
 #' simdat <- sim_mvgam(n_series = 1, trend_model = 'AR1')
 #' mod <- mvgam(y ~ s(season, bs = 'cc'),
-#'              trend_model = 'AR1',
+#'              trend_model = AR(),
+#'              noncentred = TRUE,
 #'              data = simdat$data_train,
-#'              burnin = 300,
-#'              samples = 300,
 #'              chains = 2)
 #'
 #'# Extract posterior residuals
@@ -48,7 +47,7 @@ residuals.mvgam <- function(object,
                            time = object$obs_data$index..time..index)
 
   series_numeric <- as.numeric(orig_order$series)
-  time_numeric <- orig_order$time
+  time_numeric <- match(orig_order$time, unique(orig_order$time))
 
   # Build a matrix to return residuals in this order
   resid_matrix <- matrix(NA, nrow = NROW(orig_order),

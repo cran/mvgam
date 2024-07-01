@@ -28,13 +28,12 @@ forecast <- function(object, ...){
 #'@rdname forecast.mvgam
 #'@method forecast mvgam
 #' @examples
-#' \dontrun{
-#' simdat <- sim_mvgam(n_series = 3, trend_model = 'AR1')
+#' \donttest{
+#' simdat <- sim_mvgam(n_series = 3, trend_model = AR())
 #' mod <- mvgam(y ~ s(season, bs = 'cc', k = 6),
 #'             trend_model = AR(),
+#'             noncentred = TRUE,
 #'             data = simdat$data_train,
-#'             burnin = 300,
-#'             samples = 300,
 #'             chains = 2)
 #'
 #' # Hindcasts on response scale
@@ -710,7 +709,7 @@ forecast_draws = function(object,
   }
   if(attr(object$model_data, 'trend_model') == 'None' |
      nmix_notrend){
-    if(type == 'trend' & !nmix_notrend){
+    if(type == 'trend' & !nmix_notrend & !use_lv){
       stop('No trend_model was used in this model',
            call. = FALSE)
     }
@@ -904,7 +903,7 @@ forecast_draws = function(object,
           cap <- data.frame(series = data_test$series,
                             time = data_test$index..time..index,
                             cap = suppressWarnings(linkfun(data_test$cap,
-                                                           link = family_links$link)))
+                                                           link = family_links()$link)))
 
           if(any(is.na(cap$cap)) | any(is.infinite(cap$cap))){
             stop(paste0('Missing or infinite values found for some "cap" terms\n',

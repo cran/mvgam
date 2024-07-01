@@ -113,6 +113,49 @@ validate_series_time = function(data, name = 'data',
   return(data)
 }
 
+#'@noRd
+as_one_logical = function (x, allow_na = FALSE) {
+  s <- substitute(x)
+  x <- as.logical(x)
+  if (length(x) != 1L || anyNA(x) && !allow_na) {
+    s <- deparse0(s, max_char = 100L)
+    stop("Cannot coerce '", s, "' to a single logical value.",
+         call. = FALSE)
+  }
+  x
+}
+
+#'@noRd
+as_one_integer <- function(x, allow_na = FALSE) {
+  s <- substitute(x)
+  x <- suppressWarnings(as.integer(x))
+  if (length(x) != 1L || anyNA(x) && !allow_na) {
+    s <- deparse0(s, max_char = 100L)
+    stop("Cannot coerce '", s, "' to a single integer value.",
+         call. = FALSE)
+  }
+  x
+}
+
+#'@noRd
+deparse0 = function (x, max_char = NULL, ...) {
+  out <- paste(deparse(x, ...), sep = "", collapse = "")
+  if (isTRUE(max_char > 0)) {
+    out <- substr(out, 1L, max_char)
+  }
+  out
+}
+
+#'@noRd
+validate_silent <- function(silent) {
+  silent <- as_one_integer(silent)
+  if (silent < 0 || silent > 2) {
+    stop("'silent' must be between 0 and 2.",
+         call. = FALSE)
+  }
+  silent
+}
+
 #'@importFrom rlang warn
 #'@noRd
 validate_family = function(family, use_stan = TRUE){
@@ -161,7 +204,7 @@ validate_family = function(family, use_stan = TRUE){
 }
 
 #'@noRd
-validate_family_resrictions = function(response, family){
+validate_family_restrictions = function(response, family){
 
   response <- response[!is.na(response)]
 
@@ -204,7 +247,7 @@ validate_family_resrictions = function(response, family){
 }
 
 #'@noRd
-validate_trend_model = function(trend_model, drift = FALSE){
+validate_trend_model = function(trend_model, drift = FALSE, noncentred = FALSE){
   if(inherits(trend_model, 'mvgam_trend')){
     ma_term <- if(trend_model$ma){ 'MA' } else { NULL }
     cor_term <- if(trend_model$cor){ 'cor' } else { NULL }
@@ -230,6 +273,10 @@ validate_trend_model = function(trend_model, drift = FALSE){
   if(trend_model %in% c('VAR','VAR1','VAR1cor','VARMA1,1cor','GP') & drift){
     stop('drift terms not allowed for VAR or GP models',
          call. = FALSE)
+  }
+
+  if(!trend_model %in% c('None', 'RW','AR1', 'AR2', 'AR3', 'CAR1') & noncentred){
+    message('Non-centering of trends currently not available for this model')
   }
 
   if(trend_model %in% c('PWlinear', 'PWlogistic'))
@@ -410,10 +457,10 @@ validate_trendmap = function(trend_map,
   }
 
   # No point in trend mapping if trend model is 'None'
-  if(trend_model == 'None'){
-    stop('cannot set up latent trends when "trend_model = None"',
-         call. = FALSE)
-  }
+  # if(trend_model == 'None'){
+  #   stop('cannot set up latent trends when "trend_model = None"',
+  #        call. = FALSE)
+  # }
 
   # trend_map must have an entry for each unique time series
   if(!all(sort(trend_map$series) == sort(unique(data_train$series)))){
@@ -517,8 +564,8 @@ validate_trend_restrictions = function(trend_model,
                               trend = 1:length(unique(data_train$series)))
     }
 
-    if(!trend_model %in% c('RW', 'AR1', 'AR2', 'AR3', 'VAR1', 'CAR1')){
-      stop('only RW, AR1, AR2, AR3, CAR1 and VAR trends currently supported for trend predictor models',
+    if(!trend_model %in% c('None', 'RW', 'AR1', 'AR2', 'AR3', 'VAR1', 'CAR1')){
+      stop('only None, RW, AR1, AR2, AR3, CAR1 and VAR trends currently supported for trend predictor models',
            call. = FALSE)
     }
   }
@@ -547,12 +594,6 @@ validate_trend_restrictions = function(trend_model,
     if(n_lv > length(unique(data_train$series))){
       stop('number of latent variables cannot be greater than number of series')
     }
-  }
-
-  # No point in latent variables if trend_model is None
-  if(trend_model == 'None' & use_lv){
-    use_lv <- FALSE
-    warning('No point in latent variables if trend model is None; changing use_lv to FALSE')
   }
 
   if(missing(trend_map)){
@@ -705,7 +746,13 @@ check_nmix = function(family, family_char,
 
 #'@noRd
 validate_threads = function(family_char, threads){
-  if(threads > 1 & !family_char %in% c('poisson', 'negative binomial', 'gaussian')){
+  if(threads > 1 & !family_char %in% c('poisson',
+                                       'negative binomial',
+                                       'gaussian',
+                                       'lognormal',
+                                       'beta',
+                                       'student',
+                                       'Gamma')){
     warning('multithreading not yet supported for this family; setting threads = 1')
     threads <- 1
   }

@@ -4,6 +4,8 @@
 \alias{mvgam_families}
 \alias{tweedie}
 \alias{student_t}
+\alias{betar}
+\alias{nb}
 \alias{nmix}
 \title{Supported mvgam families}
 \usage{
@@ -11,11 +13,17 @@ tweedie(link = "log")
 
 student_t(link = "identity")
 
+betar(...)
+
+nb(...)
+
 nmix(link = "log")
 }
 \arguments{
 \item{link}{a specification for the family link function. At present these cannot
 be changed}
+
+\item{...}{Arguments to be passed to the \pkg{mgcv} version of the associated functions}
 }
 \value{
 Objects of class \code{family}
@@ -39,6 +47,8 @@ In addition, the following extended families from the \code{mgcv} and \code{brms
 \item \code{\link[mgcv]{nb}} with log-link, for count data
 \item \code{\link[brms]{lognormal}} with identity-link, for non-negative real-valued data
 \item \code{\link[brms]{bernoulli}} with logit-link, for binary data
+\item \code{\link[brms]{beta_binomial}} with logit-link, as for \code{binomial()} but allows
+for overdispersion
 }
 
 Finally, \code{mvgam} supports the three extended families described here:
@@ -60,7 +70,7 @@ Note that currently it is not possible to change the default link
 functions in \code{mvgam}, so any call to change these will be silently ignored
 }
 \examples{
-\dontrun{
+\donttest{
 # Example showing how to set up N-mixture models
 set.seed(999)
 # Simulate observations for species 1, which shows a declining trend and 0.7 detection probability
@@ -154,15 +164,13 @@ mod <- mvgam(
             # priors can be set in the usual way
             priors = c(prior(std_normal(), class = b),
                        prior(normal(1, 1.5), class = Intercept_trend)),
-            burnin = 300,
-            samples = 300,
             chains = 2)
 
 # The usual diagnostics
 summary(mod)
 
 # Plotting conditional effects
-library(ggplot2)
+library(ggplot2); library(marginaleffects)
 plot_predictions(mod, condition = 'species',
                  type = 'detection') +
      ylab('Pr(detection)') +

@@ -44,7 +44,7 @@
 #' @author Nicholas J Clark
 #' @seealso \code{\link[marginaleffects]{plot_predictions}}, \code{\link[marginaleffects]{plot_slopes}}
 #' @examples
-#' \dontrun{
+#' \donttest{
 #' # Simulate some data
 #' simdat <- sim_mvgam(family = poisson(),
 #'                     seasonality = 'hierarchical')
@@ -53,9 +53,7 @@
 #' mod <- mvgam(y ~ s(season, by = series, k = 5) + year:series,
 #'              family = poisson(),
 #'              data = simdat$data_train,
-#'              chains = 2,
-#'              burnin = 300,
-#'              samples = 300)
+#'              chains = 2)
 #'
 #' # Plot all main effects on the response scale
 #' conditional_effects(mod)
@@ -73,9 +71,7 @@
 #' mod <- mvgam(y ~ te(x0, x1, k = 5) + s(x2, k = 6) + s(x3, k = 6),
 #'             data = dat,
 #'             family = gaussian(),
-#'             chains = 2,
-#'             burnin = 300,
-#'             samples = 300)
+#'             chains = 2)
 #' conditional_effects(mod)
 #' conditional_effects(mod, conf_level = 0.5, type = 'link')
 #' }
@@ -200,7 +196,6 @@ conditional_effects.mvgam = function(x,
 
   class(out) <- 'mvgam_conditional_effects'
   return(out)
-
 }
 
 #' @rdname conditional_effects.mvgam
@@ -281,28 +276,28 @@ split_termlabs = function(lab){
     if(length(term_struc$term) == 3){
       out[[1]] <- c(all.vars(parse(text = term_struc$term[1:2])),
                     term_struc$by)
-      out[[2]] <- c(all.vars(parse(text = term_struc$term[1, 3])),
+      out[[2]] <- c(all.vars(parse(text = term_struc$term[c(1, 3)])),
                     term_struc$by)
-      out[[3]] <- c(all.vars(parse(text = term_struc$term[2, 3])),
+      out[[3]] <- c(all.vars(parse(text = term_struc$term[c(2, 3)])),
                     term_struc$by)
     }
 
     if(length(term_struc$term) == 4){
       out[[1]] <- c(all.vars(parse(text = term_struc$term[1:2])),
                     term_struc$by)
-      out[[2]] <- c(all.vars(parse(text = term_struc$term[1, 3])),
+      out[[2]] <- c(all.vars(parse(text = term_struc$term[c(1, 3)])),
                     term_struc$by)
-      out[[3]] <- c(all.vars(parse(text = term_struc$term[1, 4])),
+      out[[3]] <- c(all.vars(parse(text = term_struc$term[c(1, 4)])),
                     term_struc$by)
-      out[[4]] <- c(all.vars(parse(text = term_struc$term[2, 3])),
+      out[[4]] <- c(all.vars(parse(text = term_struc$term[c(2, 3)])),
                     term_struc$by)
-      out[[5]] <- c(all.vars(parse(text = term_struc$term[2, 4])),
+      out[[5]] <- c(all.vars(parse(text = term_struc$term[c(2, 4)])),
                     term_struc$by)
     }
 
   } else if(grepl('dynamic(', lab, fixed = TRUE)){
     term_struc <- eval(rlang::parse_expr(lab))
-    out[[1]] <- c('time', all.vars(parse(text = term_struc$term[2, 4])))
+    out[[1]] <- c('time', all.vars(parse(text = term_struc$term[c(2, 4)])))
   } else {
     out[[1]] <- lab
   }

@@ -1,5 +1,130 @@
 context("mvgam")
 
+test_that("family must be correctly specified", {
+  expect_error(mod <- mvgam(y ~ s(season),
+                            trend_model = 'AR1',
+                            data = beta_data$data_train,
+                            family = 'besta',
+                            run_model = FALSE),
+               'family not recognized')
+})
+
+test_that("response variable must be specified", {
+  expect_error(mod <- mvgam( ~ s(season),
+                             trend_model = 'AR1',
+                             data = beta_data$data_train,
+                             family = betar(),
+                             run_model = FALSE),
+               'response variable is missing from formula')
+})
+
+test_that("id to link smooths not allowed yet", {
+  expect_error(mod <- mvgam(y ~ s(time, id = 1) +
+                               s(time, by = series, id = 1),
+                             data = beta_data$data_train,
+                             family = betar(),
+                             run_model = FALSE),
+               'smooth terms with the "id" argument not yet supported by mvgam')
+})
+
+test_that("response variable must follow family-specific restrictions", {
+  expect_error(mod <- mvgam(y ~ s(season),
+                            trend_model = 'AR1',
+                            data = gaus_data$data_train,
+                            family = lognormal(),
+                            run_model = FALSE),
+               'Values <= 0 not allowed for lognormal responses')
+
+  expect_error(mod <- mvgam(y ~ s(season),
+                            trend_model = 'AR1',
+                            data = gaus_data$data_train,
+                            family = poisson(),
+                            run_model = FALSE),
+               'Values < 0 not allowed for count family responses')
+})
+
+test_that("trend_model must be correctly specified", {
+  expect_error(mod <- mvgam(y ~ s(season),
+                            trend_model = 'AR11',
+                            data = beta_data$data_train,
+                            family = betar(),
+                            run_model = FALSE))
+})
+
+test_that("outcome variable must be present in data", {
+  data = data.frame(out = rnorm(100),
+                    temp = rnorm(100),
+                    time = 1:100)
+  expect_error(mod <- mvgam(formula = y ~ dynamic(temp, rho = 20),
+                            data = data,
+                            family = gaussian(),
+                            run_model = FALSE),
+               'variable y not found in data')
+})
+
+test_that("series levels must match unique entries in series", {
+  levels(beta_data$data_train$series) <- paste0('series_', 1:6)
+  expect_error(mvgam(y ~ s(season),
+                     trend_model = 'GP',
+                     data = beta_data$data_train,
+                     newdata = beta_data$data_test,
+                     family = betar(),
+                     run_model = FALSE))
+})
+
+test_that("missing values not allowed in predictors", {
+  # Include missing vals in training data
+  simdat <- sim_mvgam()
+  simdat$data_train$season[4] <- NA
+  expect_error(mvgam(y ~ s(season),
+                     trend_model = 'GP',
+                     data = simdat$data_train,
+                     newdata = simdat$data_test,
+                     run_model = FALSE))
+
+  # Include missing vals in testing data
+  simdat <- sim_mvgam()
+  simdat$data_test$season[4] <- NA
+  expect_error(mvgam(y ~ s(season),
+                     data = simdat$data_train,
+                     newdata = simdat$data_test,
+                     run_model = FALSE))
+})
+
+test_that("all series must have observations for all unique timepoints", {
+  data <- sim_mvgam()
+  data$data_train <- data$data_train[-2,]
+  expect_error(mod <- mvgam(y ~ s(season),
+                            trend_model = 'AR1',
+                            data = data$data_train,
+                            family = poisson(),
+                            run_model = FALSE),
+               'One or more series in data is missing observations for one or more timepoints')
+
+  data <- sim_mvgam()
+  data$data_test <- data$data_test[-2,]
+  expect_error(mod <- mvgam(y ~ s(season),
+                            trend_model = 'AR1',
+                            data = data$data_train,
+                            newdata = data$data_test,
+                            family = poisson(),
+                            run_model = FALSE),
+               'One or more series in newdata is missing observations for one or more timepoints')
+})
+
+test_that("rho argument must be positive numeric", {
+  data = data.frame(out = rnorm(100),
+                    temp = rnorm(100),
+                    time = 1:100)
+  expect_error(mod <- mvgam(formula = out ~ dynamic(temp, rho = -1),
+                            data = data,
+                            family = gaussian(),
+                            run_model = FALSE),
+               'Argument "rho" in dynamic() must be a positive value',
+               fixed = TRUE)
+})
+
+# Skip remaining tests on CRAN as they are slightly time-consuming
 skip_on_cran()
 
 test_that("JAGS setups should work", {
@@ -82,22 +207,160 @@ test_that("JAGS setups should work", {
   expect_true(inherits(mod, 'mvgam_prefit'))
 })
 
-test_that("family must be correctly specified", {
-  expect_error(mod <- mvgam(y ~ s(season),
-                            trend_model = 'AR1',
-                            data = beta_data$data_train,
-                            family = 'besta',
-                            run_model = FALSE),
-               'family not recognized')
+test_that("trend = 'None' works for State Space", {
+  mod <- mvgam(y ~ s(series, bs = 're'),
+               trend_formula = ~ s(season, bs = 'cc', k = 8) +
+                 s(time, bs = 'moi', k = 8),
+               trend_model = 'None',
+               data = gaus_data$data_train,
+               newdata = gaus_data$data_test,
+               family = gaussian(),
+               run_model = FALSE)
+  expect_true(inherits(mod, 'mvgam_prefit'))
+
+  expect_true(any(grepl(trimws("LV[i, j] ~ normal(trend_mus[ytimes_trend[i, j]], sigma[j]);"),
+                        trimws(mod$model_file),
+                        fixed = TRUE)))
+
+  expect_true(any(grepl(trimws("trend[i, s] = dot_product(Z[s,  : ], LV[i,  : ]);"),
+                        trimws(mod$model_file),
+                        fixed = TRUE)))
 })
 
-test_that("response variable must be specified", {
-  expect_error(mod <- mvgam( ~ s(season),
-                             trend_model = 'AR1',
-                             data = beta_data$data_train,
-                             family = betar(),
-                             run_model = FALSE),
-               'response variable is missing from formula')
+test_that("noncentring working properly for a range of models", {
+  # First check messages
+  expect_message(mvgam(y ~ s(series, bs = 're') +
+                         s(season, bs = 'cc', k = 8) +
+                         s(time, bs = 'moi', k = 8),
+                       trend_model = RW(ma = TRUE),
+                       drift = TRUE,
+                       data = gaus_data$data_train,
+                       newdata = gaus_data$data_test,
+                       family = gaussian(),
+                       noncentred = TRUE,
+                       run_model = FALSE),
+                 'Non-centering of trends currently not available for this model')
+
+  expect_message(mvgam(y ~ s(series, bs = 're') +
+                         s(season, bs = 'cc', k = 8) +
+                         s(time, bs = 'moi', k = 8),
+                       trend_model = RW(cor = TRUE),
+                       drift = TRUE,
+                       data = gaus_data$data_train,
+                       newdata = gaus_data$data_test,
+                       family = gaussian(),
+                       noncentred = TRUE,
+                       run_model = FALSE),
+                 'Non-centering of trends currently not available for this model')
+
+  expect_message(mvgam(y ~ s(series, bs = 're') +
+                         s(season, bs = 'cc', k = 8) +
+                         s(time, bs = 'moi', k = 8),
+                       trend_model = AR(p = 2, cor = TRUE),
+                       drift = TRUE,
+                       data = gaus_data$data_train,
+                       newdata = gaus_data$data_test,
+                       family = gaussian(),
+                       noncentred = TRUE,
+                       run_model = FALSE),
+                 'Non-centering of trends currently not available for this model')
+
+  expect_message(mvgam(y ~ s(series, bs = 're') +
+                         s(season, bs = 'cc', k = 8) +
+                         s(season, series, bs = 'sz'),
+                       trend_model = VAR(),
+                       data = gaus_data$data_train,
+                       newdata = gaus_data$data_test,
+                       family = gaussian(),
+                       noncentred = TRUE,
+                       run_model = FALSE),
+                 'Non-centering of trends currently not available for this model')
+
+  # Now check that the non-centering is incorporated properly
+  mod <- mvgam(y ~ s(series, bs = 're') +
+                 s(season, bs = 'cc', k = 8) +
+                 s(time, bs = 'moi', k = 8),
+               trend_model = RW(),
+               drift = TRUE,
+               data = gaus_data$data_train,
+               newdata = gaus_data$data_test,
+               family = gaussian(),
+               noncentred = TRUE,
+               run_model = FALSE)
+
+  # Model file should have the non-centred trend parameterisation now
+  expect_true(
+    any(grepl(trimws("trend = trend_raw .* rep_matrix(sigma', rows(trend_raw));"),
+              trimws(mod$model_file),
+              fixed = TRUE))
+  )
+
+  expect_true(
+    any(grepl(trimws("trend[2 : n, s] += drift[s] + trend[1 : (n - 1), s];"),
+              trimws(mod$model_file),
+              fixed = TRUE))
+  )
+
+  expect_true(
+    any(grepl(trimws("to_vector(trend_raw) ~ std_normal();"),
+              trimws(mod$model_file),
+              fixed = TRUE))
+  )
+
+  expect_true(
+    any(grepl(trimws("b[b_idx_s_time_] = abs(b_raw[b_idx_s_time_]) * 1;"),
+              trimws(mod$model_file),
+              fixed = TRUE))
+  )
+
+  mod <- mvgam(y ~ s(series, bs = 're') +
+                 s(season, bs = 'cc', k = 8) +
+                 s(season, series, bs = 'sz'),
+               trend_model = AR(p = 3),
+               priors = c(prior(beta(2,2), class = ar1,
+                              lb = 0, ub = 1),
+                          prior(exponential(3.466), class = sigma)),
+               data = gaus_data$data_train,
+               newdata = gaus_data$data_test,
+               family = gaussian(),
+               noncentred = TRUE,
+               run_model = FALSE)
+
+  expect_true(
+    any(grepl(trimws("ar1 ~ beta(2, 2);"),
+              trimws(mod$model_file),
+              fixed = TRUE))
+  )
+
+  expect_true(
+    any(grepl(trimws("sigma ~ exponential(3.466);"),
+              trimws(mod$model_file),
+              fixed = TRUE))
+  )
+
+  expect_true(
+    any(grepl(trimws("trend = trend_raw .* rep_matrix(sigma', rows(trend_raw));"),
+              trimws(mod$model_file),
+              fixed = TRUE))
+  )
+
+  expect_true(
+    any(grepl(trimws("trend[2, s] += ar1[s] * trend[1, s];"),
+              trimws(mod$model_file),
+              fixed = TRUE))
+  )
+
+  expect_true(
+    any(grepl(trimws("trend[3, s] += ar1[s] * trend[2, s] + ar2[s] * trend[1, s];"),
+              trimws(mod$model_file),
+              fixed = TRUE))
+  )
+
+  expect_true(
+    any(grepl(trimws("to_vector(trend_raw) ~ std_normal();"),
+              trimws(mod$model_file),
+              fixed = TRUE))
+  )
 })
 
 test_that("prior_only works", {
@@ -170,41 +433,6 @@ test_that("prior_only works", {
                          mod$model_file, fixed = TRUE)))
 })
 
-test_that("response variable must follow family-specific restrictions", {
-  expect_error(mod <- mvgam(y ~ s(season),
-                             trend_model = 'AR1',
-                             data = gaus_data$data_train,
-                             family = lognormal(),
-                             run_model = FALSE),
-               'Values <= 0 not allowed for lognormal responses')
-
-  expect_error(mod <- mvgam(y ~ s(season),
-                            trend_model = 'AR1',
-                            data = gaus_data$data_train,
-                            family = poisson(),
-                            run_model = FALSE),
-               'Values < 0 not allowed for count family responses')
-})
-
-test_that("trend_model must be correctly specified", {
-  expect_error(mod <- mvgam(y ~ s(season),
-                            trend_model = 'AR11',
-                            data = beta_data$data_train,
-                            family = betar(),
-                            run_model = FALSE))
-})
-
-test_that("outcome variable must be present in data", {
-  data = data.frame(out = rnorm(100),
-                    temp = rnorm(100),
-                    time = 1:100)
-  expect_error(mod <- mvgam(formula = y ~ dynamic(temp, rho = 20),
-                            data = data,
-                            family = gaussian(),
-                            run_model = FALSE),
-               'variable y not found in data')
-})
-
 test_that("time not required in data if this is a no trend model", {
   data = data.frame(out = rnorm(100),
                     temp = rnorm(100))
@@ -213,39 +441,6 @@ test_that("time not required in data if this is a no trend model", {
                             family = gaussian(),
                             run_model = FALSE)
   expect_true(inherits(mod, 'mvgam_prefit'))
-})
-
-test_that("rho argument must be positive numeric", {
-  data = data.frame(out = rnorm(100),
-                    temp = rnorm(100),
-                    time = 1:100)
-  expect_error(mod <- mvgam(formula = out ~ dynamic(temp, rho = -1),
-                            data = data,
-                            family = gaussian(),
-                            run_model = FALSE),
-               'Argument "rho" in dynamic() must be a positive value',
-               fixed = TRUE)
-})
-
-test_that("all series must have observations for all unique timepoints", {
-  data <- sim_mvgam()
-  data$data_train <- data$data_train[-2,]
-  expect_error(mod <- mvgam(y ~ s(season),
-                            trend_model = 'AR1',
-                            data = data$data_train,
-                            family = poisson(),
-                            run_model = FALSE),
-               'One or more series in data is missing observations for one or more timepoints')
-
-  data <- sim_mvgam()
-  data$data_test <- data$data_test[-2,]
-  expect_error(mod <- mvgam(y ~ s(season),
-                            trend_model = 'AR1',
-                            data = data$data_train,
-                            newdata = data$data_test,
-                            family = poisson(),
-                            run_model = FALSE),
-               'One or more series in newdata is missing observations for one or more timepoints')
 })
 
 test_that("median coefs should be stored in the mgcv object", {
@@ -275,36 +470,6 @@ test_that("empty obs formula allowed if trend_formula supplied", {
                         fixed = TRUE)))
   expect_true(any(grepl('b[1] = 0;', mod$model_file,
                         fixed = TRUE)))
-})
-
-test_that("missing values not allowed in predictors", {
-  # Include missing vals in training data
-  simdat <- sim_mvgam()
-  simdat$data_train$season[4] <- NA
-  expect_error(mvgam(y ~ s(season),
-                     trend_model = 'GP',
-                     data = simdat$data_train,
-                     newdata = simdat$data_test,
-                     run_model = FALSE))
-
-  # Include missing vals in testing data
-  simdat <- sim_mvgam()
-  simdat$data_test$season[4] <- NA
-  expect_error(mvgam(y ~ s(season),
-                     data = simdat$data_train,
-                     newdata = simdat$data_test,
-                     run_model = FALSE))
-})
-
-test_that("series levels must match unique entries in series", {
-  # Include missing vals in training data
-  simdat <- sim_mvgam()
-  levels(simdat$data_train$series) <- paste0('series_', 1:6)
-  expect_error(mvgam(y ~ s(season),
-                     trend_model = 'GP',
-                     data = simdat$data_train,
-                     newdata = simdat$data_test,
-                     run_model = FALSE))
 })
 
 test_that("share_obs_params working", {

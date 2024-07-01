@@ -20,6 +20,7 @@
   chains,
   burnin,
   samples,
+  threads,
   algorithm,
   lfo = FALSE,
   ...
@@ -105,11 +106,12 @@ families are:
 \item\code{student_t()} for real-valued data
 \item\code{Gamma()} for non-negative real-valued data
 \item\code{bernoulli()} for binary data
-\item\code{nb()} for count data
 \item\code{poisson()} for count data
+\item\code{nb()} for overdispersed count data
 \item\code{binomial()} for count data with imperfect detection when the number of trials is known;
-note that the \code{cbind()} function must be used to bind the discrete observations and the number
+note that the \code{cbind()} function must be used to bind the discrete observations and the discrete number
 of trials
+\item\code{beta_binomial()} as for \code{binomial()} but allows for overdispersion
 \item\code{nmix()} for count data with imperfect detection when the number of trials
 is unknown and should be modeled via a State-Space N-Mixture model.
 The latent states are Poisson, capturing the 'true' latent
@@ -141,6 +143,12 @@ if \code{algorithm \%in\% c('meanfield', 'fullrank', 'pathfinder', 'laplace')}}
 
 \item{samples}{\code{integer} specifying the number of post-warmup iterations of the Markov chain to run for
 sampling the posterior distribution}
+
+\item{threads}{\code{integer} Experimental option to use multithreading for within-chain
+parallelisation in \code{Stan}. We recommend its use only if you are experienced with
+\code{Stan}'s \code{reduce_sum} function and have a slow running model that cannot be sped
+up by any other means. Only available for some families(\code{poisson()}, \code{nb()}, \code{gaussian()}) and
+when using \code{Cmdstan} as the backend}
 
 \item{algorithm}{Character string naming the estimation approach to use.
 Options are \code{"sampling"} for MCMC (the default), \code{"meanfield"} for
@@ -174,20 +182,20 @@ Use \code{methods(class = "mvgam")} for an overview on available methods.
 This function allows a previously fitted \code{mvgam} model to be updated
 }
 \examples{
-\dontrun{
+\donttest{
 # Simulate some data and fit a Poisson AR1 model
 simdat <- sim_mvgam(n_series = 1, trend_model = AR())
 mod <- mvgam(y ~ s(season, bs = 'cc'),
              trend_model = AR(),
+             noncentred = TRUE,
              data = simdat$data_train,
-             burnin = 300,
-             samples = 300,
              chains = 2)
 summary(mod)
 conditional_effects(mod, type = 'link')
 
 # Update to an AR2 model
-updated_mod <- update(mod, trend_model = AR(p = 2))
+updated_mod <- update(mod, trend_model = AR(p = 2),
+                      noncentred = TRUE)
 summary(updated_mod)
 conditional_effects(updated_mod, type = 'link')
 
@@ -196,6 +204,7 @@ conditional_effects(updated_mod, type = 'link')
 simdat$data_train$trials <- max(simdat$data_train$y) + 15
 updated_mod <- update(mod,
                       formula = cbind(y, trials) ~ s(season, bs = 'cc'),
+                      noncentred = TRUE,
                       data = simdat$data_train,
                       family = binomial())
 summary(updated_mod)

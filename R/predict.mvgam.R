@@ -61,7 +61,7 @@
 #'   from each effect are returned in `matrix` form while standard errors (representing
 #'   the interval: `(max(probs) - min(probs)) / 2`) are returned in a separate `matrix`
 #'@examples
-#'\dontrun{
+#'\donttest{
 #'# Simulate 4 time series with hierarchical seasonality
 #'# and independent AR1 dynamic processes
 #'set.seed(111)
@@ -74,8 +74,7 @@
 #'              data = simdat$data_train,
 #'              family = gaussian(),
 #'              trend_model = AR(),
-#'              burnin = 300,
-#'              samples = 300,
+#'              noncentred = TRUE,
 #'              chains = 2)
 #'
 #'# Generate predictions against observed data
@@ -163,7 +162,7 @@ predict.mvgam = function(object,
                             mgcv_model = object$trend_mgcv_model)
 
       # Extract process error estimates
-      if(attr(object$model_data, 'trend_model') %in% c('RW','AR1','AR2','AR3','CAR1')){
+      if(attr(object$model_data, 'trend_model') %in% c('None', 'RW','AR1','AR2','AR3','CAR1')){
         if(object$family == 'nmix'){
           family_pars <- list(sigma_obs = .Machine$double.eps)
         } else {
@@ -467,7 +466,7 @@ terms_preds = function(object, newdata, summary = TRUE,
     effect_names <- colnames(predict(object$mgcv_model,
                                          type = 'terms',
                                          se.fit = FALSE))
-    coef_names <- names(coef(object$trend_mgcv_model))
+    coef_names <- names(coef(object$mgcv_model))
   }
 
   # Contributions considering full uncertainties

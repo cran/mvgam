@@ -23,6 +23,7 @@ mvgam(
   trend_map,
   trend_model = "None",
   drift = FALSE,
+  noncentred = FALSE,
   chains = 4,
   burnin = 500,
   samples = 500,
@@ -38,8 +39,9 @@ mvgam(
   algorithm = getOption("brms.algorithm", "sampling"),
   autoformat = TRUE,
   save_all_pars = FALSE,
-  max_treedepth,
-  adapt_delta,
+  max_treedepth = 12,
+  adapt_delta = 0.85,
+  silent = 1,
   jags_path,
   ...
 )
@@ -119,11 +121,12 @@ families are:
 \item\code{student_t()} for real-valued data
 \item\code{Gamma()} for non-negative real-valued data
 \item\code{bernoulli()} for binary data
-\item\code{nb()} for count data
 \item\code{poisson()} for count data
+\item\code{nb()} for overdispersed count data
 \item\code{binomial()} for count data with imperfect detection when the number of trials is known;
-note that the \code{cbind()} function must be used to bind the discrete observations and the number
+note that the \code{cbind()} function must be used to bind the discrete observations and the discrete number
 of trials
+\item\code{beta_binomial()} as for \code{binomial()} but allows for overdispersion
 \item\code{nmix()} for count data with imperfect detection when the number of trials
 is unknown and should be modeled via a State-Space N-Mixture model.
 The latent states are Poisson, capturing the 'true' latent
@@ -181,6 +184,12 @@ trend is expected to broadly follow a non-zero slope. Only available for
 the drift parameter can become unidentifiable, especially if an intercept term is included in the GAM linear
 predictor (which it is by default when calling \code{\link[mgcv]{jagam}}). Drift parameters will also likely
 be unidentifiable if using dynamic factor models. Therefore this defaults to \code{FALSE}}
+
+\item{noncentred}{\code{logical} experimental feature to use the non-centred parameterisation for
+trend models. Only available for certain trend models
+(i.e. \code{RW()}, \code{AR()}, or \code{CAR()} with or without \code{drift}, or for
+\code{trend = 'None'} when using a \code{trend_formula}). Not yet available for moving average or
+correlated error models}
 
 \item{chains}{\code{integer} specifying the number of parallel chains for the model. Ignored
 if \code{algorithm \%in\% c('meanfield', 'fullrank', 'pathfinder', 'laplace')}}
@@ -266,6 +275,12 @@ to a value closer to \code{1} (e.g. from \code{0.95} to \code{0.99}, or from \co
 The step size used by the numerical integrator is a function of \code{adapt_delta} in that increasing
 \code{adapt_delta} will result in a smaller step size and fewer divergences. Increasing \code{adapt_delta} will
 typically result in a slower sampler, but it will always lead to a more robust sampler}
+
+\item{silent}{Verbosity level between \code{0} and \code{2}. If \code{1} (the default), most of the informational
+messages of compiler and sampler are suppressed. If \code{2}, even more messages are suppressed. The
+actual sampling progress is still printed. Set \code{refresh = 0} to turn this off as well. If using
+\code{backend = "rstan"} you can also set open_progress = FALSE to prevent opening additional
+progress bars.}
 
 \item{jags_path}{Optional character vector specifying the path to the location of the \code{JAGS} executable (.exe) to use
 for modelling if \code{use_stan == FALSE}. If missing, the path will be recovered from a call to \code{\link[runjags]{findjags}}}
@@ -385,7 +400,13 @@ variety of trend models. Users are strongly encouraged to opt for \code{Stan} ov
 \examples{
 \donttest{
 # Simulate a collection of three time series that have shared seasonal dynamics
-dat <- sim_mvgam(T = 80, n_series = 3, prop_missing = 0.1,
+# and independent AR1 trends, with a Poisson observation process
+set.seed(0)
+dat <- sim_mvgam(T = 80,
+                n_series = 3,
+                mu = 2,
+                trend_model = AR(p = 1),
+                prop_missing = 0.1,
                 prop_trend = 0.6)
 
 # Plot key summary statistics for a single series
@@ -395,23 +416,25 @@ plot_mvgam_series(data = dat$data_train, series = 1)
 plot_mvgam_series(data = dat$data_train, series = 'all')
 
 # Formulate a model using Stan where series share a cyclic smooth for
-# seasonality and each series has an independent random walk temporal process;
+# seasonality and each series has an independent AR1 temporal process;
 # Set run_model = FALSE to inspect the returned objects
 mod1 <- mvgam(formula = y ~ s(season, bs = 'cc', k = 6),
              data = dat$data_train,
-             trend_model = RW(),
+             trend_model = AR(),
              family = poisson(),
+             noncentred = TRUE,
              use_stan = TRUE,
              run_model = FALSE)
 
 # View the model code in Stan language
 code(mod1)
 
-# Now fit the model
+# Now fit the model, noting that 'noncentred = TRUE' will likely give performance gains
 mod1 <- mvgam(formula = y ~ s(season, bs = 'cc', k = 6),
               data = dat$data_train,
-              trend_model = RW(),
+              trend_model = AR(),
               family = poisson(),
+              noncentred = TRUE,
               chains = 2)
 
 # Extract the model summary
@@ -444,6 +467,7 @@ plot(mod1, type = 'smooths', residuals = TRUE)
 plot(mod1, type = 'smooths', realisations = TRUE)
 
 # Plot conditional response predictions using marginaleffects
+library(marginaleffects)
 conditional_effects(mod1)
 plot_predictions(mod1, condition = 'season', points = 0.5)
 
@@ -481,7 +505,7 @@ mod <- mvgam(y ~ s(season, bs = 'cc', k = 6),
              chains = 2)
 
 # The mapping matrix is now supplied as data to the model in the 'Z' element
-mod1$model_data$Z
+mod$model_data$Z
 code(mod)
 
 # The first two series share an identical latent trend; the third is different
@@ -538,7 +562,8 @@ points(beta_temp, pch = 16)
 # Example showing how to incorporate an offset; simulate some count data
 # with different means per series
 set.seed(100)
-dat <- sim_mvgam(prop_trend = 0, mu = c(0, 2, 2), seasonality = 'hierarchical')
+dat <- sim_mvgam(prop_trend = 0, mu = c(0, 2, 2),
+                 seasonality = 'hierarchical')
 
 # Add offset terms to the training and testing data
 dat$data_train$offset <- 0.5 * as.numeric(dat$data_train$series)
