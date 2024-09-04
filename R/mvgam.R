@@ -27,7 +27,9 @@
 #'(i.e. by allowing effects to vary across process models, even when some time series share the same underlying
 #'process model). This feature is only currently available for `RW()`, `AR()` and `VAR()` trend models.
 #'In `nmix()` family models, the `trend_formula` is used to set up a linear predictor for the underlying
-#'latent abundance
+#'latent abundance. Be aware that it can be very challenging to simultaneously estimate intercept parameters
+#'for both the observation mode (captured by `formula`) and the process model (captured by `trend_formula`).
+#'Users are recommended to drop one of these using the `- 1` convention in the formula right hand side.
 #'@param knots An optional \code{list} containing user specified knot values to be used for basis construction.
 #'For most bases the user simply supplies the knots to be used, which must match up with the k value supplied
 #'(note that the number of knots is not always just `k`). Different terms can use different numbers of knots,
@@ -123,17 +125,19 @@
 #'`use_lv = TRUE` and using the mapping to set up the shared trends. Needs to have column names
 #'`series` and `trend`, with integer values in the `trend` column to state which trend each series
 #'should depend on. The `series` column should have a single unique entry for each series in the
-#'data (names should perfectly match factor levels of the `series` variable in `data`). See examples
-#'for details
-#'@param drift \code{logical} estimate a drift parameter in the latent trend components. Useful if the latent
-#'trend is expected to broadly follow a non-zero slope. Only available for
-#'`RW()` and `AR()` trend models. Note that if the latent trend is more or less stationary,
-#'the drift parameter can become unidentifiable, especially if an intercept term is included in the GAM linear
-#'predictor (which it is by default when calling \code{\link[mgcv]{jagam}}). Drift parameters will also likely
-#'be unidentifiable if using dynamic factor models. Therefore this defaults to \code{FALSE}
-#'@param noncentred \code{logical} experimental feature to use the non-centred parameterisation for
-#'trend models. Only available for certain trend models
-#'(i.e. `RW()`, `AR()`, or `CAR()` with or without `drift`, or for
+#'data (names should perfectly match factor levels of the `series` variable in `data`). Note that
+#'if this is supplied, the intercept parameter in the process model will NOT be automatically suppressed.
+#'See examples for details
+#'@param drift Deprecated. If you wish to estimate drift parameters, include parametric fixed effects
+#'of 'time' in your formulae instead.
+#'@param noncentred \code{logical} Use the non-centred parameterisation for autoregressive
+#'trend models? Setting to `TRUE` will reparameterise the model to avoid possible
+#'degeneracies that can show up when estimating the latent dynamic random effects. For some
+#'models, this can produce big gains in efficiency, meaning that fewer burnin and sampling
+#'iterations are required for posterior exploration. But for other models, where the data
+#'are highly informative about the latent dynamic processes, this can actually lead to worse
+#'performance. Only available for certain trend models
+#'(i.e. `RW()`, `AR()`, or `CAR()`, or for
 #'`trend = 'None'` when using a `trend_formula`). Not yet available for moving average or
 #'correlated error models
 #'@param chains \code{integer} specifying the number of parallel chains for the model. Ignored
@@ -190,7 +194,7 @@
 #'  many spline parameters and latent trend parameters. But rigorous testing has not
 #'  been carried out
 #'@param autoformat \code{Logical}. Use the `stanc` parser to automatically format the
-#'`Stan` code and check for deprecations. Defaults to `TRUE`
+#'`Stan` code and check for deprecations. Only for development purposes, so leave to `TRUE`
 #' @param save_all_pars \code{Logical} flag to indicate if draws from all
 #'   variables defined in Stan's \code{parameters} block should be saved
 #'   (default is \code{FALSE}).
@@ -245,9 +249,7 @@
 #'\code{\link{mvgam_trends}}.
 #'\cr
 #'\cr
-#'*Priors*: A \code{\link[mgcv]{jagam}} model file is generated from \code{formula} and
-#'modified to include any latent
-#'temporal processes. Default priors for intercepts and any scale parameters are generated
+#'*Priors*: Default priors for intercepts and any scale parameters are generated
 #'using the same practice as \pkg{brms}. Prior distributions for most important model parameters can be
 #'altered by the user to inspect model
 #'sensitivities to given priors (see \code{\link{get_mvgam_priors}} for details).
@@ -296,18 +298,49 @@
 #'*Using Stan*: `mvgam` is primarily designed to use Hamiltonian Monte Carlo for parameter estimation
 #'via the software `Stan` (using either the `cmdstanr` or `rstan` interface).
 #'There are great advantages when using `Stan` over Gibbs / Metropolis Hastings samplers, which includes the option
-#'to estimate smooth latent trends via [Hilbert space approximate Gaussian Processes](https://arxiv.org/abs/2004.11408).
-#'This often makes sense for ecological series, which we expect to change smoothly. In `mvgam`, latent squared
-#'exponential GP trends are approximated using by default \code{20} basis functions, which saves computational
-#'costs compared to fitting full GPs while adequately estimating
-#'GP \code{alpha} and \code{rho} parameters. Because of the many advantages of `Stan` over `JAGS`,
+#'to estimate nonlinear effects via [Hilbert space approximate Gaussian Processes](https://arxiv.org/abs/2004.11408),
+#'the availability of a variety of inference algorithms (i.e. variational inference, laplacian inference etc...) and
+#'[capabilities to enforce stationarity for complex Vector Autoregressions](https://www.tandfonline.com/doi/full/10.1080/10618600.2022.2079648).
+#'Because of the many advantages of `Stan` over `JAGS`,
 #'*further development of the package will only be applied to `Stan`*. This includes the planned addition
 #'of more response distributions, plans to handle zero-inflation, and plans to incorporate a greater
 #'variety of trend models. Users are strongly encouraged to opt for `Stan` over `JAGS` in any proceeding workflows
+#'\cr
+#'\cr
+#'*How to start?*: The [`mvgam` cheatsheet](https://github.com/nicholasjclark/mvgam/raw/master/misc/mvgam_cheatsheet.pdf) is a
+#'good starting place if you are just learning to use the package. It gives an overview of the package's key functions and objects,
+#'as well as providing a reasonable workflow that new users can follow. In general it is recommended to
+#'\itemize{
+#'   \item 1. Check that your time series data are in a suitable long format for `mvgam` modeling (see the [data formatting vignette](https://nicholasjclark.github.io/mvgam/articles/data_in_mvgam.html) for guidance)
+#'   \item 2. Inspect features of the data using \code{\link{plot_mvgam_series}}. Now is also a good time to familiarise yourself
+#'   with the package's example workflows that are detailed in the vignettes. In particular,
+#'   the [getting started vignette](https://nicholasjclark.github.io/mvgam/articles/shared_states.html),
+#'   the [shared latent states vignette](https://nicholasjclark.github.io/mvgam/articles/shared_states.html),
+#'   the [time-varying effects vignette](https://nicholasjclark.github.io/mvgam/articles/time_varying_effects.html) and
+#'   the [State-Space models vignette](https://nicholasjclark.github.io/mvgam/articles/trend_formulas.html) all provide
+#'   detailed information about how to structure, fit and interrogate Dynamic Generalized Additive Models in `mvgam`. Some
+#'   more specialized how-to articles include
+#'   ["Incorporating time-varying seasonality in forecast models"](https://ecogambler.netlify.app/blog/time-varying-seasonality/)
+#'   and ["Temporal autocorrelation in GAMs and the `mvgam` package"](https://ecogambler.netlify.app/blog/autocorrelated-gams/)
+#'   \item 3. Carefully think about how to structure linear predictor effects (i.e. smooth terms using \code{\link[mgcv]{s}},
+#'   \code{\link[mgcv]{te}} or \code{\link[mgcv]{ti}}, GPs using \code{\link[brms]{gp}}, dynamic time-varying effects using \code{\link{dynamic}}, and parametric terms), latent temporal trend components (see \code{\link{mvgam_trends}}) and the appropriate
+#'   observation family (see \code{\link{mvgam_families}}). Use \code{\link{get_mvgam_priors}} to see default prior distributions
+#'   for stochastic parameters
+#'   \item 4. Change default priors using appropriate prior knowledge (see \code{\link[brms]{prior}})
+#'   \item 5. Fit the model using either Hamiltonian Monte Carlo or an approximation algorithm (i.e. change the `backend` argument)
+#'   and use \code{\link{summary.mvgam}}, \code{\link{conditional_effects.mvgam}}, \code{\link{mcmc_plot.mvgam}}, \code{\link{pp_check.mvgam}} and
+#'   \code{\link{plot.mvgam}} to inspect / interrogate the model
+#'   \item 6. Update the model as needed and use \code{\link{loo_compare.mvgam}} for in-sample model comparisons, or alternatively
+#'   use \code{\link{forecast.mvgam}} and \code{\link{score.mvgam_forecast}} to compare models based on out-of-sample forecasts (see the [forecast evaluation vignette](https://nicholasjclark.github.io/mvgam/articles/forecast_evaluation.html) for guidance)
+#'   \item 7. When satisfied with the model structure, use \code{\link{predict.mvgam}},
+#'   \code{\link[marginaleffects]{plot_predictions}} and/or \code{\link[marginaleffects]{plot_slopes}} for
+#'   more targeted inferences (see ["How to interpret and report nonlinear effects from Generalized Additive Models"](https://ecogambler.netlify.app/blog/interpreting-gams/) for some guidance on interpreting GAMs)
+#'   }
 #'@author Nicholas J Clark
 #'@references Nicholas J Clark & Konstans Wells (2020). Dynamic generalised additive models (DGAMs) for forecasting discrete ecological time series.
 #'Methods in Ecology and Evolution. 14:3, 771-784.
 #'@seealso \code{\link[mgcv]{jagam}}, \code{\link[mgcv]{gam}}, \code{\link[mgcv]{gam.models}},
+#'\code{\link{get_mvgam_priors}}
 #'@return A \code{list} object of class \code{mvgam} containing model output, the text representation of the model file,
 #'the mgcv model output (for easily generating simulations at
 #'unsampled covariate values), Dunn-Smyth residuals for each series and key information needed
@@ -333,7 +366,8 @@
 #'plot_mvgam_series(data = dat$data_train, series = 'all')
 #'
 #'# Formulate a model using Stan where series share a cyclic smooth for
-#'# seasonality and each series has an independent AR1 temporal process;
+#'# seasonality and each series has an independent AR1 temporal process.
+#'# Note that 'noncentred = TRUE' will likely give performance gains.
 #'# Set run_model = FALSE to inspect the returned objects
 #'mod1 <- mvgam(formula = y ~ s(season, bs = 'cc', k = 6),
 #'              data = dat$data_train,
@@ -344,9 +378,13 @@
 #'              run_model = FALSE)
 #'
 #' # View the model code in Stan language
-#' code(mod1)
+#' stancode(mod1)
 #'
-#' # Now fit the model, noting that 'noncentred = TRUE' will likely give performance gains
+#' # View the data objects needed to fit the model in Stan
+#' sdata1 <- standata(mod1)
+#' str(sdata1)
+#'
+#' # Now fit the model
 #' mod1 <- mvgam(formula = y ~ s(season, bs = 'cc', k = 6),
 #'               data = dat$data_train,
 #'               trend_model = AR(),
@@ -622,6 +660,9 @@ mvgam = function(formula,
   orig_data <- data_train
 
   # Validate trend_model
+  if(drift &  silent < 2L)
+    message('The "drift" argument is deprecated; use fixed effects of "time" instead')
+  drift <- FALSE
   orig_trend_model <- trend_model
   trend_model <- validate_trend_model(orig_trend_model,
                                       drift = drift,
@@ -1463,7 +1504,7 @@ mvgam = function(formula,
           },
           model_file = vectorised$model_file,
           model_data = vectorised$model_data,
-          nmix = add_nmix,
+          drop_trend_int = FALSE,
           drift = drift)
 
         vectorised$model_file <- trend_pred_setup$model_file
@@ -1765,7 +1806,7 @@ mvgam = function(formula,
                                } else {
                                  NULL
                                },
-                               drift = drift,
+                               drift = FALSE,
                                priors = priors,
                                model_file = if(use_stan){
                                  vectorised$model_file
@@ -2046,7 +2087,7 @@ mvgam = function(formula,
                            } else {
                              NULL
                            },
-                           drift = drift,
+                           drift = FALSE,
                            priors = priors,
                            model_output = out_gam_mod,
                            model_file = if(use_stan){

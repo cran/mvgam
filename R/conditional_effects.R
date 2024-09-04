@@ -2,9 +2,7 @@
 #'
 #' Display conditional effects of one or more numeric and/or categorical
 #' predictors in `mvgam` models, including two-way interaction effects.
-#' @importFrom brms conditional_effects
 #' @importFrom ggplot2 scale_colour_discrete scale_fill_discrete theme_classic
-#' @importFrom marginaleffects plot_predictions
 #' @importFrom graphics plot
 #' @importFrom grDevices devAskNewPage
 #' @inheritParams brms::conditional_effects.brmsfit
@@ -74,6 +72,27 @@
 #'             chains = 2)
 #' conditional_effects(mod)
 #' conditional_effects(mod, conf_level = 0.5, type = 'link')
+#'
+#' \dontrun{
+#' # ggplot objects can be modified and combined with the help of many
+#' # additional packages. Here is an example using the patchwork package
+#'
+#' # Simulate some nonlinear data
+#' dat <- mgcv::gamSim(1, n = 200, scale = 2)
+#' mod <- mvgam(y ~ s(x1, bs = 'moi') +
+#'                te(x0, x2),
+#'              data = dat,
+#'              family = gaussian())
+#'
+#' # Extract the list of ggplot conditional_effect plots
+#' m <- plot(conditional_effects(mod), plot = FALSE)
+#'
+#' # Add custom labels and arrange plots together using patchwork::wrap_plots()
+#' library(patchwork)
+#' library(ggplot2)
+#' wrap_plots(m[[1]] + labs(title = 's(x1, bs = "moi")'),
+#'            m[[2]] + labs(title = 'te(x0, x2)'))
+#' }
 #' }
 #' @export
 conditional_effects.mvgam = function(x,
@@ -197,6 +216,10 @@ conditional_effects.mvgam = function(x,
   class(out) <- 'mvgam_conditional_effects'
   return(out)
 }
+
+#' @export
+#' @importFrom brms conditional_effects
+brms::conditional_effects
 
 #' @rdname conditional_effects.mvgam
 #' @export

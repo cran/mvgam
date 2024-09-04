@@ -2,7 +2,7 @@
 #' @importFrom stats make.link dgamma pgamma rgamma qnorm plnorm runif pbeta dlnorm dpois
 #' @importFrom stats pnorm ppois plogis gaussian poisson Gamma dnbinom rnbinom dnorm dbeta
 #' @importFrom stats binomial rbinom pbinom dbinom qbinom qlogis
-#' @importFrom brms lognormal student bernoulli rstudent_t qstudent_t dstudent_t pstudent_t dbeta_binomial rbeta_binomial pbeta_binomial
+#' @importFrom brms lognormal student beta_binomial bernoulli rstudent_t qstudent_t dstudent_t pstudent_t dbeta_binomial rbeta_binomial pbeta_binomial
 #' @importFrom mgcv betar nb
 #' @param link a specification for the family link function. At present these cannot
 #' be changed
@@ -78,6 +78,30 @@ betar = function(...){
 #' @export
 nb = function(...){
   mgcv::nb(...)
+}
+
+#' @rdname mvgam_families
+#' @export
+lognormal = function(...){
+  brms::lognormal(...)
+}
+
+#' @rdname mvgam_families
+#' @export
+student = function(...){
+  brms::student(...)
+}
+
+#' @rdname mvgam_families
+#' @export
+bernoulli = function(...){
+  brms::bernoulli(...)
+}
+
+#' @rdname mvgam_families
+#' @export
+beta_binomial = function(...){
+  brms::beta_binomial(...)
 }
 
 #' @rdname mvgam_families
@@ -454,7 +478,7 @@ mvgam_predict = function(Xp,
       mu <- ((matrix(Xp, ncol = NCOL(Xp)) %*%
                 betas)) + attr(Xp, 'model.offset')
       sd <- as.vector(family_pars$sigma_obs)
-      out <- (exp((sd) ^ 2) - 1) * exp((2 * mu + sd ^ 2))
+      out <- as.vector((exp((sd) ^ 2) - 1) * exp((2 * mu + sd ^ 2)))
 
     } else {
       mu <- as.vector((matrix(Xp, ncol = NCOL(Xp)) %*%
@@ -540,9 +564,8 @@ mvgam_predict = function(Xp,
                                 betas) + attr(Xp, 'model.offset')))
       out <- mu * (1 - mu)
     } else {
-      out <- plogis(((matrix(Xp, ncol = NCOL(Xp)) %*%
-                        betas)) +
-                      attr(Xp, 'model.offset'))
+      out <- plogis(as.vector((matrix(Xp, ncol = NCOL(Xp)) %*%
+                                 betas) + attr(Xp, 'model.offset')))
     }
   }
 
@@ -611,10 +634,10 @@ mvgam_predict = function(Xp,
       out <- ((n * p) * (1 - p)) * ((alpha + beta + n) / (alpha + beta + 1))
 
     } else {
-      out <- plogis(((matrix(Xp, ncol = NCOL(Xp)) %*%
+      out <- as.vector(plogis(((matrix(Xp, ncol = NCOL(Xp)) %*%
                         betas)) +
                       attr(Xp, 'model.offset')) *
-        as.vector(family_pars$trials)
+        as.vector(family_pars$trials))
     }
   }
 
@@ -641,9 +664,9 @@ mvgam_predict = function(Xp,
                              betas) + attr(Xp, 'model.offset')))
       out <- mu + mu^2 / as.vector(family_pars$phi)
     } else {
-      out <- exp(((matrix(Xp, ncol = NCOL(Xp)) %*%
+      out <- as.vector(exp(((matrix(Xp, ncol = NCOL(Xp)) %*%
                      betas)) +
-                   attr(Xp, 'model.offset'))
+                   attr(Xp, 'model.offset')))
     }
   }
 
@@ -736,9 +759,9 @@ mvgam_predict = function(Xp,
                    attr(Xp, 'model.offset')) ^ 1.5) *
         as.vector(family_pars$phi)
       } else {
-      out <- exp(((matrix(Xp, ncol = NCOL(Xp)) %*%
+      out <- as.vector(exp(((matrix(Xp, ncol = NCOL(Xp)) %*%
                      betas)) +
-                   attr(Xp, 'model.offset'))
+                   attr(Xp, 'model.offset')))
     }
   }
   return(out)

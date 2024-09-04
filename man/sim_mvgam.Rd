@@ -2,14 +2,14 @@
 % Please edit documentation in R/sim_mvgam.R
 \name{sim_mvgam}
 \alias{sim_mvgam}
-\title{Simulate a set of discrete time series for mvgam modelling}
+\title{Simulate a set of time series for mvgam modelling}
 \usage{
 sim_mvgam(
   T = 100,
   n_series = 3,
   seasonality = "shared",
   use_lv = FALSE,
-  n_lv = 1,
+  n_lv = 0,
   trend_model = "RW",
   drift = FALSE,
   prop_trend = 0.2,
@@ -36,7 +36,8 @@ or \code{hierarchical}, meaning that there is a global seasonality but each seri
 \item{use_lv}{\code{logical}. If \code{TRUE}, use dynamic factors to estimate series'
 latent trends in a reduced dimension format. If \code{FALSE}, estimate independent latent trends for each series}
 
-\item{n_lv}{\code{integer}. Number of latent dynamic factors for generating the series' trends}
+\item{n_lv}{\code{integer}. Number of latent dynamic factors for generating the series' trends.
+Defaults to \code{0}, meaning that dynamics are estimated independently for each series}
 
 \item{trend_model}{\code{character} specifying the time series dynamics for the latent trend. Options are:
 \itemize{
@@ -99,7 +100,7 @@ A \code{list} object containing outputs needed for \code{\link{mvgam}}, includin
 as well as some additional information about the simulated seasonality and trend dependencies
 }
 \description{
-This function simulates discrete time series data for fitting a multivariate GAM that includes
+This function simulates sets of time series data for fitting a multivariate GAM that includes
 shared seasonality and dependence on state-space latent dynamic factors. Random dependencies among series, i.e.
 correlations in their long-term trends, are included in the form of correlated loadings on the latent dynamic factors
 }

@@ -155,6 +155,7 @@ get_mvgam_priors = function(formula,
                             data_train,
                             family = 'poisson',
                             knots,
+                            trend_knots,
                             use_lv = FALSE,
                             n_lv,
                             use_stan = TRUE,
@@ -172,6 +173,9 @@ get_mvgam_priors = function(formula,
   orig_data <- data_train
 
   # Validate the trend arguments
+  if(drift)
+    message('The "drift" argument is deprecated; use fixed effects of "time" instead')
+  drift <- FALSE
   orig_trend_model <- trend_model
   trend_model <- validate_trend_model(orig_trend_model,
                                       drift = drift,
@@ -248,8 +252,11 @@ get_mvgam_priors = function(formula,
                                         fixed = TRUE),
                                    collapse = " "))
 
-    # Drop any intercept from the formula if this is not an N-mixture model
-    if(family_char != 'nmix'){
+    # Drop any intercept from the formula if this is not an N-mixture model or if a
+    # trend_map was not originally supplied
+    if(family_char == 'nmix') drop_trend_int <- FALSE else drop_trend_int <- TRUE
+    if(!missing(trend_map)) drop_trend_int <- FALSE
+    if(drop_trend_int){
       if(attr(terms(trend_formula), 'intercept') == 1){
         trend_formula <- update(trend_formula, trend_y  ~ . -1)
       } else {
@@ -299,7 +306,7 @@ get_mvgam_priors = function(formula,
                                        data = trend_train,
                                        family = gaussian(),
                                        trend_model = 'None',
-                                       knots = knots)
+                                       knots = trend_knots)
 
     # Modify some of the term names and return
     if(any(grepl('fixed effect', trend_prior_df$param_info))){
@@ -1246,6 +1253,22 @@ get_mvgam_priors = function(formula,
 
   return(out)
 }
+
+#' @export
+#' @importFrom brms prior
+brms::prior
+
+#' @export
+#' @importFrom brms prior_
+brms::prior_
+
+#' @export
+#' @importFrom brms set_prior
+brms::set_prior
+
+#' @export
+#' @importFrom brms prior_string
+brms::prior_string
 
 #' Use informative scale and intercept priors following brms example
 #' @importFrom stats mad qcauchy setNames

@@ -1,10 +1,13 @@
-## ----echo = FALSE-------------------------------------------------------------
-NOT_CRAN <- identical(tolower(Sys.getenv("NOT_CRAN")), "true")
+params <-
+list(EVAL = TRUE)
+
+## ---- echo = FALSE------------------------------------------------------------
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>",
-  purl = NOT_CRAN,
-  eval = NOT_CRAN
+  message = FALSE,
+  warning = FALSE,
+  eval = if (isTRUE(exists("params"))) params$EVAL else FALSE
 )
 
 
@@ -107,7 +110,7 @@ plankton_test <- plankton_data %>%
 ## ----notrend_mod, include = FALSE, results='hide'-----------------------------
 notrend_mod <- mvgam(y ~ 
                        te(temp, month, k = c(4, 4)) +
-                       te(temp, month, k = c(4, 4), by = series),
+                       te(temp, month, k = c(4, 4), by = series) - 1,
                      family = gaussian(),
                      data = plankton_train,
                      newdata = plankton_test,
@@ -121,7 +124,7 @@ notrend_mod <- mvgam(y ~
 ##                        te(temp, month, k = c(4, 4)) +
 ## 
 ##                        # series-specific deviation tensor products
-##                        te(temp, month, k = c(4, 4), by = series),
+##                        te(temp, month, k = c(4, 4), by = series) - 1,
 ##                      family = gaussian(),
 ##                      data = plankton_train,
 ##                      newdata = plankton_test,
@@ -158,10 +161,6 @@ plot(notrend_mod, type = 'residuals', series = 1)
 
 
 ## -----------------------------------------------------------------------------
-plot(notrend_mod, type = 'residuals', series = 2)
-
-
-## -----------------------------------------------------------------------------
 plot(notrend_mod, type = 'residuals', series = 3)
 
 
@@ -172,7 +171,7 @@ priors <- get_mvgam_priors(
   
   # process model formula, which includes the smooth functions
   trend_formula = ~ te(temp, month, k = c(4, 4)) +
-    te(temp, month, k = c(4, 4), by = trend),
+    te(temp, month, k = c(4, 4), by = trend) - 1,
   
   # VAR1 model with uncorrelated process errors
   trend_model = VAR(),
@@ -201,7 +200,7 @@ var_mod <- mvgam(y ~ -1,
                    te(temp, month, k = c(4, 4)) +
                    # need to use 'trend' rather than series
                    # here
-                   te(temp, month, k = c(4, 4), by = trend),
+                   te(temp, month, k = c(4, 4), by = trend) - 1,
                  family = gaussian(),
                  data = plankton_train,
                  newdata = plankton_test,
@@ -218,7 +217,7 @@ var_mod <- mvgam(y ~ -1,
 ## 
 ##   # process model formula, which includes the smooth functions
 ##   trend_formula = ~ te(temp, month, k = c(4, 4)) +
-##     te(temp, month, k = c(4, 4), by = trend),
+##     te(temp, month, k = c(4, 4), by = trend) - 1,
 ## 
 ##   # VAR1 model with uncorrelated process errors
 ##   trend_model = VAR(),
@@ -280,7 +279,7 @@ varcor_mod <- mvgam(y ~ -1,
                    te(temp, month, k = c(4, 4)) +
                    # need to use 'trend' rather than series
                    # here
-                   te(temp, month, k = c(4, 4), by = trend),
+                   te(temp, month, k = c(4, 4), by = trend) - 1,
                  family = gaussian(),
                  data = plankton_train,
                  newdata = plankton_test,
@@ -297,7 +296,7 @@ varcor_mod <- mvgam(y ~ -1,
 ## 
 ##   # process model formula, which includes the smooth functions
 ##   trend_formula = ~ te(temp, month, k = c(4, 4)) +
-##     te(temp, month, k = c(4, 4), by = trend),
+##     te(temp, month, k = c(4, 4), by = trend) - 1,
 ## 
 ##   # VAR1 model with correlated process errors
 ##   trend_model = VAR(cor = TRUE),
@@ -329,6 +328,14 @@ median_correlations <- cov2cor(matrix(apply(Sigma_post, 2, median),
 rownames(median_correlations) <- colnames(median_correlations) <- levels(plankton_train$series)
 
 round(median_correlations, 2)
+
+
+## -----------------------------------------------------------------------------
+irfs <- irf(varcor_mod, h = 12)
+
+
+## -----------------------------------------------------------------------------
+plot(irfs, series = 3)
 
 
 ## -----------------------------------------------------------------------------
