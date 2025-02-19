@@ -3,7 +3,7 @@
 \name{lfo_cv.mvgam}
 \alias{lfo_cv.mvgam}
 \alias{lfo_cv}
-\title{Approximate leave-future-out cross-validation of fitted \code{mvgam} objects}
+\title{Approximate leave-future-out cross-validation of fitted \pkg{mvgam} objects}
 \usage{
 lfo_cv(object, ...)
 
@@ -18,7 +18,7 @@ lfo_cv(object, ...)
 )
 }
 \arguments{
-\item{object}{\code{list} object returned from \code{mvgam}. See \code{\link[=mvgam]{mvgam()}}}
+\item{object}{\code{list} object of class \code{mvgam}. See \code{\link[=mvgam]{mvgam()}}}
 
 \item{...}{Ignored}
 
@@ -29,10 +29,12 @@ required by the GAM \code{formula}. Should include columns:
 Any other variables to be included in the linear predictor of \code{formula} must also be present}
 
 \item{min_t}{Integer specifying the minimum training time required before making predictions
-from the data. Default is either \code{30}, or whatever training time allows for at least
-\code{10} lfo-cv calculations (i.e. \code{pmin(max(data$time) - 10, 30)}). This value is essentially
-arbitrary so it is highly recommended to change it to something that is more suitable to the
-data and models being evaluated}
+from the data. Default is either the \code{30}th timepoint in the observational data,
+or whatever training time allows for at least
+\code{10} lfo-cv calculations, if possible.
+This value is essentially arbitrary so it is highly recommended to change it
+to something that is more suitable to the
+data and models being evaluated.}
 
 \item{fc_horizon}{Integer specifying the number of time steps ahead for evaluating forecasts}
 
@@ -50,7 +52,7 @@ A \code{list} of class \code{mvgam_lfo} containing the approximate ELPD scores,
 the Pareto-k shape values and 'the specified \code{pareto_k_threshold}
 }
 \description{
-Approximate leave-future-out cross-validation of fitted \code{mvgam} objects
+Approximate leave-future-out cross-validation of fitted \pkg{mvgam} objects
 }
 \details{
 Approximate leave-future-out cross-validation uses an expanding training window scheme
@@ -74,7 +76,7 @@ all of the observations up to the time of the failure. We then restart the proce
 until the next refit is triggered (Bürkner et al. 2020).
 }
 \examples{
-\dontrun{
+\donttest{
 # Simulate from a Poisson-AR2 model with a seasonal smooth
 set.seed(100)
 dat <- sim_mvgam(T = 75,
@@ -94,9 +96,8 @@ mod_ar2 <- mvgam(y ~ s(season, bs = 'cc', k = 6),
                family = poisson(),
                data = dat$data_train,
                newdata = dat$data_test,
-               burnin = 300,
-               samples = 300,
-               chains = 2)
+               chains = 2,
+               silent = 2)
 
 # Fit a less appropriate model
 mod_rw <- mvgam(y ~ s(season, bs = 'cc', k = 6),
@@ -104,9 +105,8 @@ mod_rw <- mvgam(y ~ s(season, bs = 'cc', k = 6),
               family = poisson(),
               data = dat$data_train,
               newdata = dat$data_test,
-              burnin = 300,
-              samples = 300,
-              chains = 2)
+              chains = 2,
+              silent = 2)
 
 # Compare Discrete Ranked Probability Scores for the testing period
 fc_ar2 <- forecast(mod_ar2)
@@ -122,10 +122,12 @@ sum(score_rw$series_1$score)
 # for estimating model parameters
 lfo_ar2 <- lfo_cv(mod_ar2,
                  min_t = 40,
-                 fc_horizon = 3)
+                 fc_horizon = 3,
+                 silent = 2)
 lfo_rw <- lfo_cv(mod_rw,
                 min_t = 40,
-                fc_horizon = 3)
+                fc_horizon = 3,
+                silent = 2)
 
 # Plot Pareto-K values and ELPD estimates
 plot(lfo_ar2)

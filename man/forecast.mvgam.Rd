@@ -10,12 +10,12 @@ forecast(object, ...)
 \method{forecast}{mvgam}(object, newdata, data_test, n_cores = 1, type = "response", ...)
 }
 \arguments{
-\item{object}{\code{list} object returned from \code{mvgam}. See \code{\link[=mvgam]{mvgam()}}}
+\item{object}{\code{list} object of class \code{mvgam} or \code{jsdgam}. See \code{\link[=mvgam]{mvgam()}}}
 
 \item{...}{Ignored}
 
-\item{newdata}{Optional \code{dataframe} or \code{list} of test data containing at least 'series' and 'time'
-in addition to any other variables included in the linear predictor of the original \code{formula}. If included, the
+\item{newdata}{Optional \code{dataframe} or \code{list} of test data containing the same variables
+that were included in the original \code{data} used to fit the model. If included, the
 covariate information in \code{newdata} will be used to generate forecasts from the fitted model equations. If
 this same \code{newdata} was originally included in the call to \code{mvgam}, then forecasts have already been
 produced by the generative model and these will simply be extracted and plotted. However if no \code{newdata} was
@@ -26,7 +26,7 @@ observation of series 1 in the original data and the first observation for serie
 \item{data_test}{Deprecated. Still works in place of \code{newdata} but users are recommended to use
 \code{newdata} instead for more seamless integration into \code{R} workflows}
 
-\item{n_cores}{\code{integer} specifying number of cores for generating forecasts in parallel}
+\item{n_cores}{Deprecated. Parallel processing is no longer supported}
 
 \item{type}{When this has the value \code{link} (default) the linear predictor is
 calculated on the link scale.
@@ -61,7 +61,8 @@ mod <- mvgam(y ~ s(season, bs = 'cc', k = 6),
             trend_model = AR(),
             noncentred = TRUE,
             data = simdat$data_train,
-            chains = 2)
+            chains = 2,
+            silent = 2)
 
 # Hindcasts on response scale
 hc <- hindcast(mod)

@@ -1,4 +1,4 @@
-#'Default mvgam plots
+#'Default plots for \pkg{mvgam} models
 #'
 #'This function takes a fitted \code{mvgam} object and produces plots of smooth functions, forecasts, trends and
 #'uncertainty components
@@ -54,7 +54,8 @@
 #'mod <- mvgam(y ~ s(season, bs = 'cc') + s(series, bs = 're'),
 #'             data = dat$data_train,
 #'             trend_model = RW(),
-#'             chains = 2)
+#'             chains = 2,
+#'             silent = 2)
 #'
 #'# Plot predictions and residuals for each series
 #'plot(mod, type = 'forecast', series = 1)
@@ -82,7 +83,8 @@
 #'             trend_formula = ~ s(season, bs = 'cc'),
 #'             data = dat$data_train,
 #'             trend_model = RW(),
-#'             chains = 2)
+#'             chains = 2,
+#'             silent = 2)
 #'plot(mod, type = 'smooths', trend_effects = TRUE)
 #'
 #'# But marginaleffects functions work without any modification
@@ -112,7 +114,7 @@ plot.mvgam = function(x, type = 'residuals',
 
   # Other errors and warnings will propagate from individual functions below
   if(type == 'series'){
-    plot_mvgam_series(object, series = series, data_test = data_test, ...)
+    print(plot_mvgam_series(object, series = series, newdata = data_test, ...))
   }
 
   if(type == 're'){
@@ -126,7 +128,7 @@ plot.mvgam = function(x, type = 'residuals',
   }
 
   if(type == 'residuals'){
-    plot_mvgam_resids(object, series = series, data_test = data_test, ...)
+    print(plot_mvgam_resids(object, series = series, ...))
   }
 
   if(type == 'factors'){

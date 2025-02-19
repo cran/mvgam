@@ -1,11 +1,10 @@
 #'@title Extract or compute hindcasts and forecasts for a fitted \code{mvgam} object
 #'@name forecast.mvgam
-#'@importFrom parallel clusterExport stopCluster setDefaultCluster
 #'@importFrom stats predict
 #'@importFrom rlang missing_arg
 #'@inheritParams predict.mvgam
-#'@param newdata Optional \code{dataframe} or \code{list} of test data containing at least 'series' and 'time'
-#'in addition to any other variables included in the linear predictor of the original \code{formula}. If included, the
+#'@param newdata Optional \code{dataframe} or \code{list} of test data containing the same variables
+#'that were included in the original `data` used to fit the model. If included, the
 #'covariate information in \code{newdata} will be used to generate forecasts from the fitted model equations. If
 #'this same \code{newdata} was originally included in the call to \code{mvgam}, then forecasts have already been
 #'produced by the generative model and these will simply be extracted and plotted. However if no \code{newdata} was
@@ -14,7 +13,7 @@
 #'observation of series 1 in the original data and the first observation for series 1 in \code{newdata})
 #'@param data_test Deprecated. Still works in place of \code{newdata} but users are recommended to use
 #'\code{newdata} instead for more seamless integration into `R` workflows
-#'@param n_cores \code{integer} specifying number of cores for generating forecasts in parallel
+#'@param n_cores Deprecated. Parallel processing is no longer supported
 #'@param ... Ignored
 #'@details Posterior predictions are drawn from the fitted \code{mvgam} and used to simulate a forecast distribution
 #'@return An object of class \code{mvgam_forecast} containing hindcast and forecast distributions.
@@ -34,7 +33,8 @@ forecast <- function(object, ...){
 #'             trend_model = AR(),
 #'             noncentred = TRUE,
 #'             data = simdat$data_train,
-#'             chains = 2)
+#'             chains = 2,
+#'             silent = 2)
 #'
 #' # Hindcasts on response scale
 #' hc <- hindcast(mod)
@@ -71,6 +71,9 @@ forecast.mvgam = function(object,
                           ...){
   # Check arguments
   validate_pos_integer(n_cores)
+  if(n_cores > 1L){
+    message('argument "n_cores" is deprecated')
+  }
 
   if(!missing("newdata")){
     data_test <- newdata
@@ -84,20 +87,24 @@ forecast.mvgam = function(object,
   type <- match.arg(arg = type, choices = c("link", "response",
                                             "trend", "expected",
                                             "detection", "latent_N"))
+
+  if(inherits(object, 'jsdgam')){
+    orig_trend_model <- attr(object$model_data, 'prepped_trend_model')
+  } else {
+    orig_trend_model <- object$trend_model
+  }
+
   data_train <- validate_series_time(object$obs_data,
-                                     trend_model = attr(object$model_data,
-                                                        'trend_model'))
+                                     trend_model = orig_trend_model)
   n_series <- NCOL(object$ytimes)
 
   # Check whether a forecast has already been computed
   forecasts_exist <- FALSE
   if(!is.null(object$test_data) && !missing(data_test)){
     object$test_data <- validate_series_time(object$test_data,
-                                             trend_model = attr(object$model_data,
-                                                                'trend_model'))
+                                             trend_model = orig_trend_model)
     data_test <- validate_series_time(data_test,
-                                      trend_model = attr(object$model_data,
-                                                         'trend_model'))
+                                      trend_model = orig_trend_model)
     if(max(data_test$index..time..index) <=
        max(object$test_data$index..time..index)){
       forecasts_exist <- TRUE
@@ -129,8 +136,7 @@ forecast.mvgam = function(object,
 
   if(is.null(object$test_data)){
     data_test <- validate_series_time(data_test, name = 'newdata',
-                                      trend_model = attr(object$model_data,
-                                                         'trend_model'))
+                                      trend_model = orig_trend_model)
     data.frame(series = object$obs_data$series,
                time = object$obs_data$time) %>%
       dplyr::group_by(series) %>%
@@ -180,8 +186,7 @@ forecast.mvgam = function(object,
         data_test$y <- rep(NA, NROW(data_test))
       }
       data_test <- validate_series_time(data_test, name = 'newdata',
-                                        trend_model = attr(object$model_data,
-                                                           'trend_model'))
+                                        trend_model = orig_trend_model)
     }
 
     # Generate draw-specific forecasts
@@ -203,8 +208,7 @@ forecast.mvgam = function(object,
 
     # Extract hindcasts
     data_train <- validate_series_time(object$obs_data,
-                                       trend_model = attr(object$model_data,
-                                                          'trend_model'))
+                                       trend_model = orig_trend_model)
     ends <- seq(0, dim(mcmc_chains(object$model_output, 'ypred'))[2],
                 length.out = NCOL(object$ytimes) + 1)
     starts <- ends + 1
@@ -336,14 +340,12 @@ forecast.mvgam = function(object,
   } else {
     # If forecasts already exist, simply extract them
     data_test <- validate_series_time(object$test_data,
-                                      trend_model = attr(object$model_data,
-                                                         'trend_model'))
+                                      trend_model = orig_trend_model)
     last_train <- max(object$obs_data$index..time..index) -
       (min(object$obs_data$index..time..index) - 1)
 
     data_train <- validate_series_time(object$obs_data,
-                                       trend_model = attr(object$model_data,
-                                                          'trend_model'))
+                                       trend_model = orig_trend_model)
     ends <- seq(0, dim(mcmc_chains(object$model_output, 'ypred'))[2],
                 length.out = NCOL(object$ytimes) + 1)
     starts <- ends + 1
@@ -574,7 +576,7 @@ forecast.mvgam = function(object,
                                use_lv = object$use_lv,
                                fit_engine = object$fit_engine,
                                type = type,
-                               series_names = factor(unique(data_train$series),
+                               series_names = factor(levels(data_train$series),
                                                      levels = levels(data_train$series)),
                                train_observations = series_obs,
                                train_times = unique(data_train$index..time..index),
@@ -601,8 +603,14 @@ forecast_draws = function(object,
 
   # Check arguments
   validate_pos_integer(n_cores)
+  if(inherits(object, 'jsdgam')){
+    orig_trend_model <- attr(object$model_data, 'prepped_trend_model')
+  } else {
+    orig_trend_model <- object$trend_model
+  }
   data_test <- validate_series_time(data_test, name = 'newdata',
-                                    trend_model = attr(object$model_data, 'trend_model'))
+                                    trend_model = orig_trend_model)
+  data_test <- sort_data(data_test)
   n_series <- NCOL(object$ytimes)
   use_lv <- object$use_lv
 
@@ -654,7 +662,8 @@ forecast_draws = function(object,
     Xp_trend <- trend_Xp_matrix(newdata = sort_data(data_test),
                                 trend_map = object$trend_map,
                                 series = series,
-                                mgcv_model = object$trend_mgcv_model)
+                                mgcv_model = object$trend_mgcv_model,
+                                forecast = TRUE)
 
     # For trend_formula models with autoregressive processes,
     # the process model operates as: AR * (process[t - 1] - mu[t-1]])
@@ -662,24 +671,22 @@ forecast_draws = function(object,
     # to correctly propagate the process model forward
     if(use_lv & attr(object$model_data, 'trend_model') != 'GP'){
       # Get the observed trend predictor matrix
-      Xp_trend_last <- trend_Xp_matrix(newdata = object$obs_data,
-                                       trend_map = object$trend_map,
-                                       series = series,
-                                       mgcv_model = object$trend_mgcv_model)
+      newdata <- trend_map_data_prep(object$obs_data,
+                                     object$trend_map,
+                                     forecast = TRUE)
+      Xp_trend_last <- predict(object$trend_mgcv_model,
+                               newdata = newdata,
+                               type = 'lpmatrix')
 
       # Ensure the last three values are used, in case the obs_data
       # was not supplied in order
-      data.frame(time = object$obs_data$index..time..index,
-                 series = object$obs_data$series,
-                 row_id = 1:length(object$obs_data$index..time..index)) %>%
+      data.frame(time = newdata$index..time..index,
+                 series = newdata$series,
+                 row_id = 1:length(newdata$index..time..index)) %>%
         dplyr::arrange(time, series) %>%
         dplyr::pull(row_id) -> sorted_inds
-
-      linpred_order <- vector(length = 3 * n_series)
-      last_rows <- tail(sort(sorted_inds), 3 * n_series)
-      for(i in seq_along(last_rows)){
-        linpred_order[i] <- which(sorted_inds == last_rows[i])
-      }
+      n_processes <- length(unique(object$trend_map$trend))
+      linpred_order <- tail(sorted_inds, 3 * n_processes)
 
       # Deal with any offsets
       if(!all(attr(Xp_trend_last, 'model.offset') == 0)){
@@ -703,7 +710,7 @@ forecast_draws = function(object,
 
   # No need to compute in parallel if there was no trend model
   nmix_notrend <- FALSE
-  if(!inherits(object$trend_model, 'mvgam_trend') &
+  if(!inherits(orig_trend_model, 'mvgam_trend') &
      object$family == 'nmix'){
     nmix_notrend <- TRUE
   }
@@ -829,39 +836,8 @@ forecast_draws = function(object,
       }
     }
 
-    # Set up parallel environment for looping across posterior draws
-    # to compute h-step ahead forecasts
-    cl <- parallel::makePSOCKcluster(n_cores)
-    parallel::setDefaultCluster(cl)
-    parallel::clusterExport(NULL, c('family',
-                                    'family_pars',
-                                    'trials',
-                                    'trend_model',
-                                    'trend_pars',
-                                    'type',
-                                    'use_lv',
-                                    'betas',
-                                    'betas_trend',
-                                    'n_series',
-                                    'data_test',
-                                    'series',
-                                    'series_test',
-                                    'Xp',
-                                    'Xp_trend',
-                                    'fc_horizon',
-                                    'b_uncertainty',
-                                    'trend_uncertainty',
-                                    'obs_uncertainty',
-                                    'time_dis'),
-                            envir = environment())
-    parallel::clusterExport(cl = cl,
-                            unclass(lsf.str(envir = asNamespace("mvgam"),
-                                            all = T)),
-                            envir = as.environment(asNamespace("mvgam")))
-
-    pbapply::pboptions(type = "none")
-
-    fc_preds <- pbapply::pblapply(seq_len(dim(betas)[1]), function(i){
+    # Loop over draws and compute forecasts (in serial at the moment)
+    fc_preds <- lapply(seq_len(dim(betas)[1]), function(i){
       # Sample index
       samp_index <- i
 
@@ -970,7 +946,7 @@ forecast_draws = function(object,
             Xpmat <- Xp[which(as.numeric(data_test$series) == series),]
             latent_lambdas <- exp(trend_states[, series])
             pred_betas <- betas
-            cap <- data_test$cap[which(as.numeric(object$obs_data$series) == series)]
+            cap <- data_test$cap[which(as.numeric(data_test$series) == series)]
           } else {
             Xpmat <- cbind(Xp[which(as.numeric(data_test$series) == series),],
                            trend_states[, series])
@@ -1019,8 +995,7 @@ forecast_draws = function(object,
         })
       }
       out
-    }, cl = cl)
-    stopCluster(cl)
+    })
   }
 
   return(fc_preds)

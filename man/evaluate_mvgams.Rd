@@ -5,14 +5,14 @@
 \alias{eval_mvgam}
 \alias{roll_eval_mvgam}
 \alias{compare_mvgams}
-\title{Evaluate forecasts from fitted mvgam objects}
+\title{Evaluate forecasts from fitted \pkg{mvgam} objects}
 \usage{
 eval_mvgam(
   object,
   n_samples = 5000,
   eval_timepoint = 3,
   fc_horizon = 3,
-  n_cores = 2,
+  n_cores = 1,
   score = "drps",
   log = FALSE,
   weights
@@ -24,7 +24,7 @@ roll_eval_mvgam(
   evaluation_seq,
   n_samples = 5000,
   fc_horizon = 3,
-  n_cores = 2,
+  n_cores = 1,
   score = "drps",
   log = FALSE,
   weights
@@ -36,7 +36,7 @@ compare_mvgams(
   n_samples = 1000,
   fc_horizon = 3,
   n_evaluations = 10,
-  n_cores = 2,
+  n_cores = 1,
   score = "drps",
   log = FALSE,
   weights
@@ -53,7 +53,7 @@ set of outcome data}
 
 \item{fc_horizon}{\code{integer} specifying the length of the forecast horizon for evaluating forecasts}
 
-\item{n_cores}{\code{integer} specifying number of cores for generating particle forecasts in parallel}
+\item{n_cores}{Deprecated. Parallel processing is no longer supported}
 
 \item{score}{\code{character} specifying the type of ranked probability score to use for evaluation. Options are:
 \code{variogram}, \code{drps} or \code{crps}}
@@ -100,7 +100,7 @@ temporal dependencies in the data. These trends are time series models and so wi
 stable forecasts
 }
 \description{
-Evaluate forecasts from fitted mvgam objects
+Evaluate forecasts from fitted \pkg{mvgam} objects
 }
 \details{
 \code{eval_mvgam} may be useful when both repeated fitting of a model using \code{\link{update.mvgam}}
@@ -125,13 +125,13 @@ provides a series of summary plots to facilitate model selection. It is essentia
 \code{roll_eval_mvgam}
 }
 \examples{
-\dontrun{
+\donttest{
 # Simulate from a Poisson-AR2 model with a seasonal smooth
-set.seed(100)
+set.seed(1)
 dat <- sim_mvgam(T = 75,
                 n_series = 1,
                 prop_trend = 0.75,
-                trend_model = 'AR2',
+                trend_model = AR(p = 2),
                 family = poisson())
 
 
@@ -141,15 +141,17 @@ mod_ar2 <- mvgam(y ~ s(season, bs = 'cc'),
                 family = poisson(),
                 data = dat$data_train,
                 newdata = dat$data_test,
-                chains = 2)
+                chains = 2,
+                silent = 2)
 
 # Fit a less appropriate model
-mod_rw <- mvgam(y ~ s(season, bs = 'cc'),
+mod_rw <- mvgam(y ~ 1,
                trend_model = RW(),
                family = poisson(),
                data = dat$data_train,
                newdata = dat$data_test,
-               chains = 2)
+               chains = 2,
+               silent = 2)
 
 # Compare Discrete Ranked Probability Scores for the testing period
 fc_ar2 <- forecast(mod_ar2)
@@ -173,10 +175,12 @@ compare_mvgams(mod_ar2,
 # for estimating model parameters
 lfo_ar2 <- lfo_cv(mod_ar2,
                  min_t = 40,
-                 fc_horizon = 3)
+                 fc_horizon = 3,
+                 silent = 2)
 lfo_rw <- lfo_cv(mod_rw,
                 min_t = 40,
-                fc_horizon = 3)
+                fc_horizon = 3,
+                silent = 2)
 
 # Plot Pareto-K values and ELPD estimates
 plot(lfo_ar2)

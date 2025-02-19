@@ -1,8 +1,7 @@
-#'Evaluate forecasts from fitted mvgam objects
+#'Evaluate forecasts from fitted \pkg{mvgam} objects
 #'
 #'@importFrom graphics barplot boxplot axis
 #'@importFrom stats quantile ecdf median predict
-#'@importFrom parallel clusterExport stopCluster setDefaultCluster clusterEvalQ
 #'@importFrom grDevices devAskNewPage
 #'@importFrom utils lsf.str
 #'@param object \code{list} object returned from \code{mvgam}
@@ -11,7 +10,7 @@
 #'@param eval_timepoint \code{integer} indexing the timepoint that represents our last 'observed'
 #'set of outcome data
 #'@param fc_horizon \code{integer} specifying the length of the forecast horizon for evaluating forecasts
-#'@param n_cores \code{integer} specifying number of cores for generating particle forecasts in parallel
+#'@param n_cores Deprecated. Parallel processing is no longer supported
 #'@param score \code{character} specifying the type of ranked probability score to use for evaluation. Options are:
 #'`variogram`, `drps` or `crps`
 #'@param log \code{logical}. Should the forecasts and truths be logged prior to scoring?
@@ -61,13 +60,13 @@
 #'stable forecasts
 #'@seealso \code{\link{forecast}}, \code{\link{score}}, \code{\link{lfo_cv}}
 #'@examples
-#'\dontrun{
+#'\donttest{
 #'# Simulate from a Poisson-AR2 model with a seasonal smooth
-#'set.seed(100)
+#'set.seed(1)
 #'dat <- sim_mvgam(T = 75,
 #'                 n_series = 1,
 #'                 prop_trend = 0.75,
-#'                 trend_model = 'AR2',
+#'                 trend_model = AR(p = 2),
 #'                 family = poisson())
 #'
 #'
@@ -77,15 +76,17 @@
 #'                 family = poisson(),
 #'                 data = dat$data_train,
 #'                 newdata = dat$data_test,
-#'                 chains = 2)
+#'                 chains = 2,
+#'                 silent = 2)
 #'
 #'# Fit a less appropriate model
-#'mod_rw <- mvgam(y ~ s(season, bs = 'cc'),
+#'mod_rw <- mvgam(y ~ 1,
 #'                trend_model = RW(),
 #'                family = poisson(),
 #'                data = dat$data_train,
 #'                newdata = dat$data_test,
-#'                chains = 2)
+#'                chains = 2,
+#'                silent = 2)
 #'
 #'# Compare Discrete Ranked Probability Scores for the testing period
 #'fc_ar2 <- forecast(mod_ar2)
@@ -109,10 +110,12 @@
 #'# for estimating model parameters
 #'lfo_ar2 <- lfo_cv(mod_ar2,
 #'                  min_t = 40,
-#'                  fc_horizon = 3)
+#'                  fc_horizon = 3,
+#'                  silent = 2)
 #'lfo_rw <- lfo_cv(mod_rw,
 #'                 min_t = 40,
-#'                 fc_horizon = 3)
+#'                 fc_horizon = 3,
+#'                 silent = 2)
 #'
 #'# Plot Pareto-K values and ELPD estimates
 #'plot(lfo_ar2)
@@ -136,7 +139,7 @@ eval_mvgam = function(object,
                       n_samples = 5000,
                       eval_timepoint = 3,
                       fc_horizon = 3,
-                      n_cores = 2,
+                      n_cores = 1,
                       score = 'drps',
                       log = FALSE,
                       weights){
@@ -154,6 +157,9 @@ eval_mvgam = function(object,
   validate_pos_integer(fc_horizon)
   validate_pos_integer(eval_timepoint)
   validate_pos_integer(n_cores)
+  if(n_cores > 1L){
+    message('argument "n_cores" is deprecated')
+  }
   validate_pos_integer(n_samples)
 
   if(eval_timepoint < 3){
@@ -272,7 +278,7 @@ eval_mvgam = function(object,
     })
 
     # Calculate score and interval coverage per series
-    if(object$family %in% c('poisson', 'negative binomial')){
+    if(object$family %in% c('poisson', 'negative binomial', 'binomial', 'beta_binomial')){
       series_score <- lapply(seq_len(n_series), function(series){
         DRPS <- data.frame(drps_mcmc_object(as.vector(as.matrix(series_truths[[series]])),
                                               series_fcs[[series]],
@@ -312,7 +318,7 @@ eval_mvgam = function(object,
 #'@param n_evaluations \code{integer} specifying the total number of evaluations to perform
 #'(ignored if \code{evaluation_seq} is supplied)
 #'@param fc_horizon \code{integer} specifying the length of the forecast horizon for evaluating forecasts
-#'@param n_cores \code{integer} specifying number of cores for generating particle forecasts in parallel
+#'@param n_cores Deprecated. Parallel processing is no longer supported
 #'@rdname evaluate_mvgams
 #'@export
 roll_eval_mvgam = function(object,
@@ -320,7 +326,7 @@ roll_eval_mvgam = function(object,
                            evaluation_seq,
                            n_samples = 5000,
                            fc_horizon = 3,
-                           n_cores = 2,
+                           n_cores = 1,
                            score = 'drps',
                            log = FALSE,
                            weights){
@@ -335,13 +341,16 @@ roll_eval_mvgam = function(object,
          call. = FALSE)
   }
   validate_pos_integer(n_cores)
+  if(n_cores > 1L){
+    message('argument "n_cores" is deprecated')
+  }
   validate_pos_integer(n_evaluations)
   validate_pos_integer(n_samples)
   validate_pos_integer(fc_horizon)
 
   # Generate time variable from training data
-  if(class(object$obs_data)[1] == 'list'){
-    all_timepoints <- (data.frame(time = object$obs_data$time)  %>%
+  if(inherits(object$obs_data, 'list')){
+    all_timepoints <- (data.frame(time = object$obs_data$index..time..index) %>%
                          dplyr::select(time) %>%
                          dplyr::distinct() %>%
                          dplyr::arrange(time) %>%
@@ -350,9 +359,9 @@ roll_eval_mvgam = function(object,
 
   } else {
     all_timepoints <- (object$obs_data %>%
-                         dplyr::select(time) %>%
+                         dplyr::select(index..time..index) %>%
                          dplyr::distinct() %>%
-                         dplyr::arrange(time) %>%
+                         dplyr::arrange(index..time..index) %>%
                          dplyr::mutate(time = dplyr::row_number())) %>%
       dplyr::pull(time)
   }
@@ -378,29 +387,7 @@ roll_eval_mvgam = function(object,
     weights <- rep(1, NCOL(object$ytimes))
   }
 
-  cl <- parallel::makePSOCKcluster(n_cores)
-  parallel::setDefaultCluster(cl)
-  clusterExport(NULL, c('all_timepoints',
-                        'evaluation_seq',
-                        'object',
-                        'n_samples',
-                        'fc_horizon',
-                        'eval_mvgam',
-                        'score',
-                        'log',
-                        'weights'),
-                envir = environment())
-  clusterEvalQ(cl, library(mgcv))
-  clusterEvalQ(cl, library(rstan))
-  clusterEvalQ(cl, library(dplyr))
-  clusterExport(cl = cl,
-                          unclass(lsf.str(envir = asNamespace("mvgam"),
-                                          all = T)),
-                          envir = as.environment(asNamespace("mvgam"))
-  )
-
-  pbapply::pboptions(type = "none")
-  evals <- pbapply::pblapply(evaluation_seq, function(timepoint){
+  evals <- lapply(evaluation_seq, function(timepoint){
     eval_mvgam(object = object,
                n_samples = n_samples,
                n_cores = 1,
@@ -409,9 +396,7 @@ roll_eval_mvgam = function(object,
                score = score,
                log = log,
                weights = weights)
-  },
-  cl = cl)
-  stopCluster(cl)
+  })
 
   # Take sum of score at each evaluation point for multivariate models
   sum_or_na = function(x){
@@ -489,7 +474,7 @@ roll_eval_mvgam = function(object,
 #'posterior distribution
 #'@param fc_horizon \code{integer} specifying the length of the forecast horizon for evaluating forecasts
 #'@param n_evaluations \code{integer} specifying the total number of evaluations to perform
-#'@param n_cores \code{integer} specifying number of cores for generating particle forecasts in parallel
+#'@param n_cores Deprecated. Parallel processing is no longer supported
 #'@rdname evaluate_mvgams
 #'@export
 compare_mvgams = function(model1,
@@ -497,7 +482,7 @@ compare_mvgams = function(model1,
                           n_samples = 1000,
                           fc_horizon = 3,
                           n_evaluations = 10,
-                          n_cores = 2,
+                          n_cores = 1,
                           score = 'drps',
                           log = FALSE,
                           weights){
@@ -524,6 +509,9 @@ compare_mvgams = function(model1,
   validate_pos_integer(n_evaluations)
   validate_pos_integer(fc_horizon)
   validate_pos_integer(n_cores)
+  if(n_cores > 1L){
+    message('argument "n_cores" is deprecated')
+  }
   validate_pos_integer(n_samples)
 
   # Evaluate the two models
@@ -631,7 +619,7 @@ crps_edf <- function(y, dat, w = NULL) {
   sapply(y, f)
 }
 
-# Calculate out of sample CRPS
+# Compute CRPS
 # code borrowed from scoringRules: https://github.com/FK83/scoringRules/blob/master/R/scores_sample_univ.R
 #' @noRd
 crps_score <- function(truth, fc, method = "edf", w = NULL,
@@ -658,7 +646,7 @@ crps_score <- function(truth, fc, method = "edf", w = NULL,
 }
 
 
-# Calculate out of sample DRPS
+# Compute DRPS
 #' @noRd
 drps_score <- function(truth, fc, interval_width = 0.9,
                        log = FALSE){
@@ -684,7 +672,7 @@ drps_score <- function(truth, fc, interval_width = 0.9,
   return(c(score, in_interval))
 }
 
-# Calculate out of sample scaled interval score
+# Compute the scaled interval score
 #' @noRd
 sis_score <- function(truth, fc, interval_width = 0.9,
                        log = FALSE){
@@ -713,6 +701,20 @@ sis_score <- function(truth, fc, interval_width = 0.9,
   return(c(score, in_interval))
 }
 
+# Compute the Brier score
+#' @noRd
+brier_score <- function(truth,
+                        fc,
+                        interval_width = 0.9){
+
+  score <- (truth - fc) ^ 2
+  score <- sum(score) / length(score)
+
+  # Cannot evaluate coverage for binary truths
+  in_interval <- NA
+  return(c(score, in_interval))
+}
+
 #' Compute the multivariate energy score
 #' @noRd
 energy_score <- function(truth, fc, log = FALSE) {
@@ -728,24 +730,6 @@ energy_score <- function(truth, fc, log = FALSE) {
   }
   es <- scoringRules::es_sample(y = truth, dat = fc)
   return(es)
-}
-
-#' Wrapper to calculate energy score on all observations in fc_horizon
-#' @noRd
-energy_mcmc_object <- function(truths, fcs, log = FALSE,
-                                  weights){
-  fc_horizon <- length(fcs[[1]][1,])
-  fcs_per_horizon <- lapply(seq_len(fc_horizon), function(horizon){
-    do.call(rbind, lapply(seq_along(fcs), function(fc){
-      fcs[[fc]][,horizon]
-    }))
-  })
-
-  unlist(lapply(seq_len(fc_horizon), function(horizon){
-    energy_score(truth = truths[,horizon],
-                 fc = fcs_per_horizon[[horizon]],
-                 log = log)
-  }))
 }
 
 #' Compute the variogram score, using the median pairwise difference
@@ -784,6 +768,45 @@ variogram_score = function(truth, fc, log = FALSE, weights){
   # comparison twice
   score <- sum(out) / 2
 
+}
+
+#' Compute the energy score on all observations in fc_horizon
+#' @noRd
+energy_mcmc_object <- function(truths, fcs, log = FALSE,
+                                  weights){
+  fc_horizon <- length(fcs[[1]][1,])
+  fcs_per_horizon <- lapply(seq_len(fc_horizon), function(horizon){
+    do.call(rbind, lapply(seq_along(fcs), function(fc){
+      fcs[[fc]][,horizon]
+    }))
+  })
+
+  unlist(lapply(seq_len(fc_horizon), function(horizon){
+    energy_score(truth = truths[,horizon],
+                 fc = fcs_per_horizon[[horizon]],
+                 log = log)
+  }))
+}
+
+#' Compute the Brier score on all observations in fc_horizon
+#' @noRd
+brier_mcmc_object <- function(truth,
+                              fc,
+                              log = FALSE,
+                              weights){
+
+  indices_keep <- which(!is.na(truth))
+  if(length(indices_keep) == 0){
+    scores = data.frame('brier' = rep(NA, length(truth)),
+                        'interval' = rep(NA, length(truth)))
+  } else {
+    scores <- matrix(NA, nrow = length(truth), ncol = 2)
+    for(i in indices_keep){
+      scores[i,] <- brier_score(truth = as.vector(truth)[i],
+                                fc = fc[,i])
+    }
+  }
+  scores
 }
 
 #' Wrapper to calculate variogram score on all observations in fc_horizon

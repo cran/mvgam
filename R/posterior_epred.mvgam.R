@@ -1,4 +1,4 @@
-#' Draws from the Expected Value of the Posterior Predictive Distribution
+#' Draws from the expected value of the posterior predictive distribution for \pkg{mvgam} objects
 #'
 #' Compute posterior draws of the expected value of the posterior predictive
 #' distribution (i.e. the conditional expectation).
@@ -39,11 +39,13 @@
 #' @examples
 #' \donttest{
 #' # Simulate some data and fit a model
-#' simdat <- sim_mvgam(n_series = 1, trend_model = 'AR1')
+#' simdat <- sim_mvgam(n_series = 1, trend_model = AR())
 #' mod <- mvgam(y ~ s(season, bs = 'cc'),
 #'             trend_model = AR(),
 #'             noncentred = TRUE,
-#'             data = simdat$data_train)
+#'             data = simdat$data_train,
+#'             chains = 2,
+#'             silent = 2)
 #'
 #'# Compute posterior expectations
 #'expectations <- posterior_epred(mod)
@@ -78,7 +80,7 @@ posterior_epred.mvgam = function(object,
   return(out)
 }
 
-#' Posterior Draws of the Linear Predictor
+#' Posterior draws of the linear predictor for \pkg{mvgam} objects
 #'
 #' Compute posterior draws of the linear predictor, that is draws before
 #' applying any link functions or other transformations. Can be performed for
@@ -110,12 +112,13 @@ posterior_epred.mvgam = function(object,
 #' @examples
 #' \donttest{
 #' # Simulate some data and fit a model
-#' simdat <- sim_mvgam(n_series = 1, trend_model = 'AR1')
+#' simdat <- sim_mvgam(n_series = 1, trend_model = AR())
 #' mod <- mvgam(y ~ s(season, bs = 'cc'),
 #'              trend_model = AR(),
 #'              noncentred = TRUE,
 #'              data = simdat$data_train,
-#'              chains = 2)
+#'              chains = 2,
+#'              silent = 2)
 #'
 #'# Extract linear predictor values
 #'linpreds <- posterior_linpred(mod)
@@ -154,7 +157,7 @@ posterior_linpred.mvgam = function(object,
   return(out)
 }
 
-#' Draws from the Posterior Predictive Distribution
+#' Draws from the posterior predictive distribution for \pkg{mvgam} objects
 #'
 #' Compute posterior draws of the posterior predictive distribution. Can be
 #' performed for the data used to fit the model (posterior predictive checks) or
@@ -189,12 +192,14 @@ posterior_linpred.mvgam = function(object,
 #' and \code{n_obs} is the number of observations in \code{newdata}
 #' @seealso \code{\link{hindcast.mvgam}} \code{\link{posterior_linpred.mvgam}} \code{\link{posterior_epred.mvgam}}
 #' @examples
-#' \dontrun{
+#' \donttest{
 #' # Simulate some data and fit a model
-#' simdat <- sim_mvgam(n_series = 1, trend_model = 'AR1')
+#' simdat <- sim_mvgam(n_series = 1, trend_model = AR())
 #' mod <- mvgam(y ~ s(season, bs = 'cc'),
-#'             trend_model = 'AR1',
-#'             data = simdat$data_train)
+#'             trend_model = AR(),
+#'             data = simdat$data_train,
+#'             chains = 2,
+#'             silent = 2)
 #'
 #'# Compute posterior predictions
 #'predictions <- posterior_predict(mod)
@@ -238,7 +243,7 @@ rstantools::posterior_epred
 rstantools::posterior_linpred
 
 
-#' Expected Values of the Posterior Predictive Distribution
+#' Expected values of the posterior predictive distribution for \pkg{mvgam} objects
 #'
 #' This method extracts posterior estimates of the fitted values
 #' (i.e. the actual predictions, included estimates for any trend states,
@@ -269,15 +274,14 @@ rstantools::posterior_linpred
 #'   quantile estimates as specified via argument \code{probs}.
 #' @seealso \code{\link{hindcast.mvgam}}
 #' @examples
-#' \dontrun{
+#' \donttest{
 #' # Simulate some data and fit a model
-#' simdat <- sim_mvgam(n_series = 1, trend_model = 'AR1')
+#' simdat <- sim_mvgam(n_series = 1, trend_model = AR())
 #' mod <- mvgam(y ~ s(season, bs = 'cc'),
-#'             trend_model = 'AR1',
+#'             trend_model = AR(),
 #'             data = simdat$data_train,
 #'             chains = 2,
-#'             burnin = 300,
-#'             samples = 300)
+#'             silent = 2)
 #'
 #'# Extract fitted values (posterior expectations)
 #'expectations <- fitted(mod)
@@ -293,6 +297,14 @@ fitted.mvgam <- function(object, process_error = TRUE,
   type <- switch(scale, "response" = "expected",
                   "linear" = "link")
   preds <- .mvgam_fitted(object = object, type = type)
+
+  # Preserve original data ordering
+  data.frame(time = object$obs_data$index..time..index,
+             order = object$obs_data$index..orig..order,
+             series = object$obs_data$series) %>%
+    dplyr::arrange(time, series) %>%
+    dplyr::pull(order) -> orig_order
+  preds <- preds[ , order(orig_order)]
 
   if(summary){
     Qupper <- apply(preds, 2, quantile, probs = max(probs), na.rm = TRUE)

@@ -22,6 +22,10 @@ expect_loo <- function(object, ...) {
   testthat::expect_true(is(object, "psis_loo"), ...)
 }
 
+expect_range <- function(object, lower = -Inf, upper = Inf, ...) {
+  testthat::expect_true(all(object >= lower & object <= upper), ...)
+}
+
 SM <- suppressMessages
 SW <- suppressWarnings
 
@@ -38,3 +42,4 @@ gaus_data <- sim_mvgam(family = gaussian(),
                        mu = c(-1, 0, 1),
                        trend_rel = 0.5,
                        prop_missing = 0.2)
+

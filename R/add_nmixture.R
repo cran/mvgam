@@ -114,10 +114,6 @@ add_nmixture = function(model_file,
            "Y_max[k] = max(flat_ys[K_inds[k, K_starts[k] : K_stops[k]]]);\n",
            "N_max[k] = max(cap[K_inds[k, K_starts[k] : K_stops[k]]]);\n",
            "}")
-  } else {
-    model_file[grep("transformed data {", model_file, fixed = TRUE)] <-
-      paste0("transformed data {\n",
-             "matrix[total_obs, num_basis] X_ordered = X[ytimes_array,  : ];")
   }
   model_file <- readLines(textConnection(model_file), n = -1)
 
@@ -355,50 +351,37 @@ add_nmix_model = function(model_file,
     model_file[grep('flat_ys ~ poisson_log_glm(append_col(flat_xs, flat_trends),',
                     model_file, fixed = TRUE)] <-
       paste0('// loop over replicate sampling window (each site*time*species combination)\n',
-             'for ( k in 1 : K_groups ) {\n',
+             'for (k in 1 : K_groups) {\n',
              '// all log_lambdas are identical because they represent site*time\n',
              '// covariates; so just use the first measurement\n',
              'real log_lambda = flat_trends[K_inds[k, 1]];\n',
-             'vector[N_max[k] - Y_max[k] + 1] terms;\n',
-             'int l = 0;\n',
-             '// marginalize over latent abundance\n',
-             'for ( Ni in Y_max[k] : N_max[k] ) {\n',
-             'l = l + 1;\n',
-             '// factor for poisson prob of latent Ni; compute\n',
-             '// only once per sampling window\n',
-             'terms[l] = poisson_log_lpmf( Ni | log_lambda ) +\n',
-             '// for each replicate observation, binomial prob observed is\n',
-             '// computed in a vectorized statement\n',
-             'binomial_logit_lpmf( flat_ys[K_inds[k, K_starts[k] : K_stops[k]]] |\n',
-             'Ni,\n',
-             'flat_ps[K_inds[k, K_starts[k] : K_stops[k]]] );\n',
+             '// logit-scale detection probilities for the replicate observations\n',
+             'vector[size(K_inds[k, K_starts[k] : K_stops[k]])] logit_p = to_vector(flat_ps[K_inds[k, K_starts[k] : K_stops[k]]]);\n',
+             '// K values and observed counts for these replicates\n',
+             'int K_max = N_max[k];\n',
+             'int K_min = Y_max[k];\n',
+             'array[size(K_inds[k, K_starts[k] : K_stops[k]])] int N_obs = flat_ys[K_inds[k, K_starts[k] : K_stops[k]]];\n',
+             'int possible_N = K_max - K_min;\n',
+             '// marginalize over possible latent counts analytically\n',
+             'real ff = exp(log_lambda) * prod(1 - inv_logit(logit_p));\n',
+             'real prob_n = 1;\n',
+             'for (i in 1 : possible_N){\n',
+             'real N = K_max - i + 1;\n',
+             'real k_obs = 1;\n',
+             'for (j in 1 : size(N_obs)){\n',
+             'k_obs *= N / (N - N_obs[j]);\n',
              '}\n',
-             'target += log_sum_exp( terms );\n',
+             'prob_n = 1 + prob_n * ff * k_obs / N;\n',
+             '}\n',
+             '// add log(pr_n) to prob(K_min)\n',
+             'target += poisson_log_lpmf(K_min | log_lambda) +\n',
+             'binomial_logit_lpmf(N_obs | K_min, logit_p) +\n',
+             'log(prob_n);\n',
              '}')
     model_file <- model_file[-grep('0.0,append_row(b, 1.0));',
                                    model_file, fixed = TRUE)]
     model_file <- readLines(textConnection(model_file), n = -1)
 
-  } else {
-    model_file[grep('vector[n_nonmissing] flat_trends;',
-                    model_file, fixed = TRUE)] <- paste0('vector[n_nonmissing] flat_trends;\n',
-                                                         'vector[n_nonmissing] flat_ps;\n',
-                                                         'int flat_caps[n_nonmissing];')
-    model_file <- readLines(textConnection(model_file), n = -1)
-
-    model_file[grep('flat_trends = (to_vector(trend))[obs_ind];',
-                    model_file, fixed = TRUE)] <- paste0('flat_trends = (to_vector(trend))[obs_ind];\n',
-                                                         'flat_ps = p[obs_ind];\n',
-                                                         'flat_caps = cap[obs_ind];')
-    model_file <- readLines(textConnection(model_file), n = -1)
-
-    model_file[grep('flat_ys ~ poisson_log_glm(append_col(flat_xs, flat_trends),',
-                    model_file, fixed = TRUE)] <- paste0('for (i in 1:n_nonmissing){\n',
-                                                         'target += pb_lpmf(flat_ys[i] | flat_caps[i], flat_trends[i], flat_ps[i]);\n',
-                                                         '}')
-    model_file <- model_file[-grep('0.0,append_row(b, 1.0));',
-                                   model_file, fixed = TRUE)]
-    model_file <- readLines(textConnection(model_file), n = -1)
   }
 
   return(model_file)
@@ -407,69 +390,6 @@ add_nmix_model = function(model_file,
 add_nmix_functions = function(model_file,
                               trend_map,
                               nmix_trendmap){
-  if(nmix_trendmap){
-    # If trend_map supplied, no modifications needed
-  } else {
-    if(any(grepl('functions {', model_file, fixed = TRUE))){
-      model_file[grep('functions {', model_file, fixed = TRUE)] <-
-        paste0('functions {\n',
-               '/* Functions to return the log probability of a Poisson Binomial Mixture */\n',
-               '/* see Bollen et al 2023 for details (https://doi.org/10.1002/ece3.10595)*/\n',
-               'real poisbin_lpmf(int count, int k, real lambda, real p) {\n',
-               'if (count > k) {\n',
-               'return negative_infinity();\n',
-               '}\n',
-               'return poisson_log_lpmf(k | lambda) + binomial_logit_lupmf(count | k, p);\n',
-               '}\n',
-               'vector pb_logp(int count, int max_k,\n',
-               'real lambda, real p) {\n',
-               'if (max_k < count)\n',
-               'reject("cap variable max_k must be >= observed counts");\n',
-               'vector[max_k + 1] lp;\n',
-               'for (k in 0:(count - 1))\n',
-               'lp[k + 1] = negative_infinity();\n',
-               'for (k in count:max_k)\n',
-               'lp[k + 1] = poisbin_lpmf(count | k, lambda, p);\n',
-               'return lp;\n',
-               '}\n',
-               'real pb_lpmf(int count, int max_k,\n',
-               'real lambda, real p) {\n',
-               'vector[max_k + 1] lp;\n',
-               'lp = pb_logp(count, max_k, lambda, p);\n',
-               'return log_sum_exp(lp);\n',
-               '}')
-    } else {
-      model_file[grep('Stan model code', model_file)] <-
-        paste0('// Stan model code generated by package mvgam\n',
-               'functions {\n',
-               '/* Functions to return the log probability of a Poisson Binomial Mixture */\n',
-               '/* see Bollen et al 2023 for details (https://doi.org/10.1002/ece3.10595)*/\n',
-               'real poisbin_lpmf(int count, int k, real lambda, real p) {\n',
-               'if (count > k) {\n',
-               'return negative_infinity();\n',
-               '}\n',
-               'return poisson_log_lpmf(k | lambda) + binomial_logit_lupmf(count | k, p);\n',
-               '}\n',
-               'vector pb_logp(int count, int max_k,\n',
-               'real lambda, real p) {\n',
-               'if (max_k < count)\n',
-               'reject("cap variable max_k must be >= observed counts");\n',
-               'vector[max_k + 1] lp;\n',
-               'for (k in 0:(count - 1))\n',
-               'lp[k + 1] = negative_infinity();\n',
-               'for (k in count:max_k)\n',
-               'lp[k + 1] = poisbin_lpmf(count | k, lambda, p);\n',
-               'return lp;\n',
-               '}\n',
-               'real pb_lpmf(int count, int max_k,\n',
-               'real lambda, real p) {\n',
-               'vector[max_k + 1] lp;\n',
-               'lp = pb_logp(count, max_k, lambda, p);\n',
-               'return log_sum_exp(lp);\n',
-               '}\n}\n')
-    }
-  }
-
   model_file <- readLines(textConnection(model_file), n = -1)
   return(model_file)
 }

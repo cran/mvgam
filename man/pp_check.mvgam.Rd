@@ -3,7 +3,7 @@
 \name{pp_check.mvgam}
 \alias{pp_check.mvgam}
 \alias{pp_check}
-\title{Posterior Predictive Checks for \code{mvgam} Objects}
+\title{Posterior Predictive Checks for \code{mvgam} models}
 \usage{
 \method{pp_check}{mvgam}(
   object,
@@ -31,7 +31,7 @@ If \code{NULL} all draws are used. If not specified,
 the number of posterior draws is chosen automatically.
 Ignored if \code{draw_ids} is not \code{NULL}.}
 
-\item{prefix}{The prefix of the \pkg{bayesplot} function to be applied. 
+\item{prefix}{The prefix of the \pkg{bayesplot} function to be applied.
 Either `"ppc"` (posterior predictive check; the default)
 or `"ppd"` (posterior predictive distribution), the latter being the same
 as the former except that the observed data is not shown for `"ppd"`.}
@@ -56,24 +56,27 @@ A ggplot object that can be further
 customized using the \pkg{ggplot2} package.
 }
 \description{
-Perform posterior predictive checks with the help
+Perform unconditional posterior predictive checks with the help
 of the \pkg{bayesplot} package.
 }
 \details{
-For a detailed explanation of each of the ppc functions,
+Unlike the conditional posterior checks provided by \code{\link{ppc}},
+This function computes \emph{unconditional} posterior predictive checks (i.e. it generates
+predictions for fake data without considering the true observations associated with those
+fake data). For a detailed explanation of each of the ppc functions,
 see the \code{\link[bayesplot:PPC-overview]{PPC}}
 documentation of the \pkg{\link[bayesplot:bayesplot-package]{bayesplot}}
 package.
 }
 \examples{
-\dontrun{
+\donttest{
 simdat <- sim_mvgam(seasonality = 'hierarchical')
 mod <- mvgam(y ~ series +
               s(season, bs = 'cc', k = 6) +
               s(season, series, bs = 'fs', k = 4),
             data = simdat$data_train,
-            burnin = 300,
-            samples = 300)
+            chains = 2,
+            silent = 2)
 
 # Use pp_check(mod, type = "xyz") for a list of available plot types
 
@@ -111,7 +114,7 @@ pp_check(mod, prefix = "ppd")
 
 }
 \seealso{
-\code{\link{ppc}} \code{\link{predict.mvgam}}
+\code{\link{ppc}}, \code{\link{predict.mvgam}}
 }
 \author{
 Nicholas J Clark

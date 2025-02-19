@@ -1,17 +1,19 @@
-#'@title Approximate leave-future-out cross-validation of fitted `mvgam` objects
+#'@title Approximate leave-future-out cross-validation of fitted \pkg{mvgam} objects
 #'@name lfo_cv.mvgam
 #'@importFrom stats update logLik
-#'@param object \code{list} object returned from \code{mvgam}. See [mvgam()]
+#'@param object \code{list} object of class \code{mvgam}. See [mvgam()]
 #'@param data A \code{dataframe} or \code{list} containing the model response variable and covariates
 #'required by the GAM \code{formula}. Should include columns:
 #''series' (character or factor index of the series IDs)
 #''time' (numeric index of the time point for each observation).
 #'Any other variables to be included in the linear predictor of \code{formula} must also be present
 #'@param min_t Integer specifying the minimum training time required before making predictions
-#'from the data. Default is either `30`, or whatever training time allows for at least
-#'`10` lfo-cv calculations (i.e. `pmin(max(data$time) - 10, 30)`). This value is essentially
-#'arbitrary so it is highly recommended to change it to something that is more suitable to the
-#'data and models being evaluated
+#'from the data. Default is either the `30`th timepoint in the observational data,
+#'or whatever training time allows for at least
+#'`10` lfo-cv calculations, if possible.
+#'This value is essentially arbitrary so it is highly recommended to change it
+#'to something that is more suitable to the
+#'data and models being evaluated.
 #'@param fc_horizon Integer specifying the number of time steps ahead for evaluating forecasts
 #'@param pareto_k_threshold Proportion specifying the threshold over which the Pareto shape parameter
 #'is considered unstable, triggering a model refit. Default is `0.7`
@@ -46,7 +48,7 @@
 #'@references Paul-Christian Bürkner, Jonah Gabry & Aki Vehtari (2020). Approximate leave-future-out cross-validation for Bayesian time series models
 #'Journal of Statistical Computation and Simulation. 90:14, 2499-2523.
 #'@examples
-#'\dontrun{
+#'\donttest{
 #'# Simulate from a Poisson-AR2 model with a seasonal smooth
 #'set.seed(100)
 #'dat <- sim_mvgam(T = 75,
@@ -66,9 +68,8 @@
 #'                family = poisson(),
 #'                data = dat$data_train,
 #'                newdata = dat$data_test,
-#'                burnin = 300,
-#'                samples = 300,
-#'                chains = 2)
+#'                chains = 2,
+#'                silent = 2)
 #'
 #'# Fit a less appropriate model
 #'mod_rw <- mvgam(y ~ s(season, bs = 'cc', k = 6),
@@ -76,9 +77,8 @@
 #'               family = poisson(),
 #'               data = dat$data_train,
 #'               newdata = dat$data_test,
-#'               burnin = 300,
-#'               samples = 300,
-#'               chains = 2)
+#'               chains = 2,
+#'               silent = 2)
 #'
 #'# Compare Discrete Ranked Probability Scores for the testing period
 #'fc_ar2 <- forecast(mod_ar2)
@@ -94,10 +94,12 @@
 #'# for estimating model parameters
 #'lfo_ar2 <- lfo_cv(mod_ar2,
 #'                  min_t = 40,
-#'                  fc_horizon = 3)
+#'                  fc_horizon = 3,
+#'                  silent = 2)
 #'lfo_rw <- lfo_cv(mod_rw,
 #'                 min_t = 40,
-#'                 fc_horizon = 3)
+#'                 fc_horizon = 3,
+#'                 silent = 2)
 #'
 #'# Plot Pareto-K values and ELPD estimates
 #'plot(lfo_ar2)
@@ -136,14 +138,23 @@ lfo_cv.mvgam = function(object,
   } else {
     all_data <- validate_series_time(data,
                                      name = 'data',
-                                     trend_model = attr(object$model_data, 'trend_model'))
+                                     trend_model = object$trend_model)
   }
   N <- max(all_data$index..time..index)
+  all_unique_times <- sort(unique(all_data$index..time..index))
 
-  # Default minimum training time is 30, or
+  # Default minimum training time is the 30th timepoint, or
   # whatever training time allows for at least 10 lfo_cv calculations
   if(missing(min_t)){
-    min_t <- pmin(N - 10 - fc_horizon, 30)
+    if(length(all_unique_times) > 30){
+      min_t <- pmin(max(1, N - 10 - fc_horizon), all_unique_times[30])
+    } else if(length(all_unique_times) < 30 & length(all_unique_times) > 20){
+      min_t <- pmin(max(1, N - 10 - fc_horizon), all_unique_times[20])
+    } else if(length(all_unique_times) < 20 & length(all_unique_times) > 10) {
+      min_t <- pmin(max(1, N - 10 - fc_horizon), all_unique_times[10])
+    } else {
+      min_t <- 1
+    }
   }
 
   if(min_t < 0){
@@ -175,11 +186,11 @@ lfo_cv.mvgam = function(object,
   }
 
   fit_past <- update(object,
-                    data = data_splits$data_train,
-                    newdata = data_splits$data_test,
-                    lfo = TRUE,
-                    noncentred = noncentred,
-                    silent = silent)
+                     data = data_splits$data_train,
+                     newdata = data_splits$data_test,
+                     lfo = TRUE,
+                     noncentred = noncentred,
+                     silent = silent)
 
   # Calculate log likelihoods of forecast observations for the next
   # fc_horizon ahead observations
@@ -254,22 +265,22 @@ lfo_cv.mvgam = function(object,
       approx_elpds[i + 1] <- log_sum_exp(lw + sum_rows(loglik_past[,fc_indices]))
     }
   }
-  return(structure(list(elpds = approx_elpds[(min_t + 1):N],
+  return(structure(list(elpds = approx_elpds[(min_t + 1):(N - fc_horizon)],
                         sum_ELPD = sum(approx_elpds, na.rm = TRUE),
-                        pareto_ks = ks,
-                        eval_timepoints = (min_t + 1):N,
+                        pareto_ks = ks[-1],
+                        eval_timepoints = (min_t + 1):(N - fc_horizon),
                         pareto_k_threshold = pareto_k_threshold),
                    class = 'mvgam_lfo'))
 }
 
-#' Plot Pareto-k and ELPD values from a leave-future-out object
+#' Plot Pareto-k and ELPD values from a `mvgam_lfo` object
 #'
 #' This function takes an object of class `mvgam_lfo` and creates several
 #' informative diagnostic plots
 #' @importFrom graphics layout axis lines abline polygon points
 #' @param x An object of class `mvgam_lfo`
 #' @param ... Ignored
-#' @return A base `R` plot of Pareto-k and ELPD values over the
+#' @return A ggplot object of Pareto-k and ELPD values over the
 #' evaluation timepoints. For the Pareto-k plot, a dashed red line indicates the
 #' specified threshold chosen for triggering model refits. For the ELPD plot,
 #' a dashed red line indicates the bottom 10% quantile of ELPD values. Points below
@@ -279,177 +290,59 @@ plot.mvgam_lfo = function(x, ...){
 
   object <- x
 
-  # Graphical parameters
-  .pardefault <- par(no.readonly=T)
-  on.exit(par(.pardefault))
-  par(mfrow = c(2, 1))
-
   # Plot Pareto-k values over time
   object$pareto_ks[which(is.infinite(object$pareto_ks))] <-
     max(object$pareto_ks[which(!is.infinite(object$pareto_ks))])
-  plot(1, type = "n", bty = 'L',
-       xlab = '',
-       ylab = 'Pareto k',
-       xaxt = 'n',
-       xlim = range(object$eval_timepoints),
-       ylim = c(min(object$pareto_ks) - 0.1,
-                max(object$pareto_ks) + 0.1))
-  axis(side = 1, labels = NA, lwd = 2)
 
-  lines(x = object$eval_timepoints,
-        y = object$pareto_ks,
-        lwd = 2.5)
+  dplyr::tibble(eval_timepoints = object$eval_timepoints,
+                elpds = object$elpds,
+                pareto_ks = object$pareto_ks) -> obj_tribble
 
-  abline(h = object$pareto_k_threshold, col = 'white', lwd = 2.85)
-  abline(h = object$pareto_k_threshold, col = "#A25050", lwd = 2.5, lty = 'dashed')
-
-  points(x = object$eval_timepoints,
-         y = object$pareto_ks, pch = 16, col = "white", cex = 1.25)
-  points(x = object$eval_timepoints,
-         y = object$pareto_ks, pch = 16, col = "black", cex = 1)
-
-  points(x = object$eval_timepoints[which(object$pareto_ks > object$pareto_k_threshold)],
-         y = object$pareto_ks[which(object$pareto_ks > object$pareto_k_threshold)],
-         pch = 16, col = "white", cex = 1.5)
-  points(x = object$eval_timepoints[which(object$pareto_ks > object$pareto_k_threshold)],
-         y = object$pareto_ks[which(object$pareto_ks > object$pareto_k_threshold)],
-         pch = 16, col = "#7C0000", cex = 1.25)
-
-  box(bty = 'l', lwd = 2)
-
-  # Plot ELPD values over time
-  plot(1, type = "n", bty = 'L',
-       xlab = 'Time point',
-       ylab = 'ELPD',
-       xlim = range(object$eval_timepoints),
-       ylim = c(min(object$elpds) - 0.1,
-                max(object$elpds) + 0.1))
-
-  lines(x = object$eval_timepoints,
-        y = object$elpds,
-        lwd = 2.5)
-
-  lower_vals <- quantile(object$elpds, probs = c(0.15))
-  abline(h = lower_vals, col = 'white', lwd = 2.85)
-  abline(h = lower_vals, col = "#A25050", lwd = 2.5, lty = 'dashed')
-
-  points(x = object$eval_timepoints,
-         y = object$elpds, pch = 16, col = "white", cex = 1.25)
-  points(x = object$eval_timepoints,
-         y = object$elpds, pch = 16, col = "black", cex = 1)
-
-  points(x = object$eval_timepoints[which(object$elpds < lower_vals)],
-         y = object$elpds[which(object$elpds < lower_vals)],
-         pch = 16, col = "white", cex = 1.5)
-  points(x = object$eval_timepoints[which(object$elpds < lower_vals)],
-         y = object$elpds[which(object$elpds < lower_vals)],
-         pch = 16, col = "#7C0000", cex = 1.25)
-
-  box(bty = 'l', lwd = 2)
-}
-
-#' Function to generate informative priors based on the posterior
-#' of a previously fitted model (EXPERIMENTAL!!)
-#' @noRd
-summarize_posterior = function(object){
-
-  # Extract the trend model
-  trend_model <- attr(object$model_data, 'trend_model')
-  if(trend_model == 'VAR1'){
-    trend_model <- 'VAR1cor'
-  }
-
-  # Get params that can be modified for this model
-  if(is.null(object$trend_call)){
-    update_priors <- get_mvgam_priors(formula = formula(object),
-                                      family = object$family,
-                                      data = object$obs_data,
-                                      trend_model = trend_model)
-  } else {
-    update_priors <- get_mvgam_priors(formula = formula(object),
-                                      family = object$family,
-                                      trend_formula = as.formula(object$trend_call),
-                                      data = object$obs_data,
-                                      trend_model = trend_model)
-  }
-
-  pars_keep <- c('smooth parameter|process error|fixed effect|Intercept|pop mean|pop sd|AR1|AR2|AR3|amplitude|length scale')
-  update_priors <- update_priors[grepl(pars_keep, update_priors$param_info), ]
-
-  # Get all possible parameters to summarize
-  pars_to_prior <- vector()
-  for(i in 1:NROW(update_priors)){
-    pars_to_prior[i] <- trimws(strsplit(update_priors$prior[i], "[~]")[[1]][1])
-  }
-
-  # Summarize parameter posteriors as Normal distributions
-  pars_posterior <- list()
-  for(i in seq_along(pars_to_prior)){
-    if(pars_to_prior[i] == '(Intercept)'){
-      post_samps <- mcmc_chains(object$model_output, 'b[1]',
-                                ISB = FALSE)
-    } else {
-
-      suppressWarnings(post_samps <- try(mcmc_chains(object$model_output,
-                                                     pars_to_prior[i]),
-                                         silent = TRUE))
-
-      if(inherits(post_samps, 'try-error')){
-        suppressWarnings(post_samps <- try(as.matrix(mod,
-                                                     variable = pars_to_prior[i],
-                                                     regex = TRUE),
-                                           silent = TRUE))
-      }
-
-      if(inherits(post_samps, 'try-error')) next
-    }
-
-    new_lowers <- round(apply(post_samps, 2, min), 3)
-    new_uppers <- round(apply(post_samps, 2, max), 3)
-    means <- round(apply(post_samps, 2, mean), 3)
-    sds <- round(apply(post_samps, 2, sd), 3)
-    priors <- paste0('normal(', means, ', ', sds, ')')
-    parametric <- grepl('Intercept|fixed effect',
-                        update_priors$param_info[i])
-    parnames <- dimnames(post_samps)[[2]]
-
-    priorstring <- list()
-    for(j in 1:NCOL(post_samps)){
-      priorstring[[j]] <- prior_string(priors[j],
-                                       class = parnames[j],
-                                       resp = parametric,
-                                       ub = new_uppers[j],
-                                       lb = new_lowers[j],
-                                       group = pars_to_prior[i])
-    }
-
-    pars_posterior[[i]] <- do.call(rbind, priorstring)
-  }
-  pars_posterior <- do.call(rbind, pars_posterior)
-  pars_posterior <- pars_posterior[(pars_posterior$ub == 0 &
-                                      pars_posterior$lb == 0)
-                                   == FALSE, ]
-  pars_posterior <- pars_posterior[(pars_posterior$ub == 1 &
-                                      pars_posterior$lb == 1)
-                                   == FALSE, ]
-  pars_posterior$param_name <- NA
-  pars_posterior$parametric <- pars_posterior$resp
-  pars_posterior$resp <- NULL
-  attr(pars_posterior, 'posterior_to_prior') <- TRUE
-
-  return(pars_posterior)
-}
-
-#' Function for a leave-future-out update that uses informative priors
-#' @noRd
-lfo_update = function(object, ...){
-  # Get informative priors
-  priors <- summarize_posterior(object)
-
-  # Run the update using the informative priors
-  update.mvgam(object,
-               priors = priors,
-               ...)
+  # Hack so we don't have to import tidyr just to use pivot_longer once
+  dplyr::bind_rows(obj_tribble %>%
+                     dplyr::select(eval_timepoints, elpds) %>%
+                     dplyr::mutate(name = 'elpds', value = elpds) %>%
+                     dplyr::select(-elpds),
+                   obj_tribble %>%
+                     dplyr::select(eval_timepoints, pareto_ks) %>%
+                     dplyr::mutate(name = 'pareto_ks', value = pareto_ks) %>%
+                     dplyr::select(-pareto_ks)) %>%
+    dplyr::left_join(
+      dplyr::tribble(~name, ~threshold,
+                     "elpds", quantile(object$elpds, probs = 0.15),
+                     "pareto_ks", object$pareto_k_threshold),
+      by = "name"
+    ) %>%
+    dplyr::rowwise() %>%
+    dplyr::mutate(colour = dplyr::case_when(
+      name == 'elpds' & value < threshold ~ "outlier",
+      name == 'pareto_ks' & value > threshold ~ "outlier",
+      TRUE ~ "inlier"
+    )) %>%
+    dplyr::ungroup() %>%
+    ggplot2::ggplot(ggplot2::aes(eval_timepoints, value)) +
+    ggplot2::facet_wrap(~ factor(name,
+                                 levels = c("pareto_ks", "elpds"),
+                                 labels = c("Pareto K", "ELPD")),
+                        ncol = 1,
+                        scales = "free_y") +
+    ggplot2::geom_hline(ggplot2::aes(yintercept = threshold),
+                        colour = "#A25050",
+                        linetype = "dashed",
+                        linewidth = 1) +
+    ggplot2::geom_line(linewidth = 0.5,
+                       col = "grey30") +
+    ggplot2::geom_point(shape = 16,
+                        colour = 'white',
+                        size = 2) +
+    ggplot2::geom_point(ggplot2::aes(colour = colour),
+                        shape = 16,
+                        show.legend = F,
+                        size = 1.5) +
+    ggplot2::scale_colour_manual(values = c("grey30", "#8F2727")) +
+    ggplot2::labs(x = "Evaluation time",
+                  y = NULL) +
+    ggplot2::theme_bw()
 }
 
 #' Function to generate training and testing splits

@@ -1,9 +1,9 @@
-#' LOO information criteria for `mvgam` models
+#' LOO information criteria for \pkg{mvgam} models
 #'
 #' Extract the LOOIC (leave-one-out information criterion) using
 #' [loo::loo()]
 #' @importFrom loo loo is.loo
-#' @param x Object of class `mvgam`
+#' @param x Object of class `mvgam` or `jsdgam`
 #' @param incl_dynamics Logical; indicates if any latent dynamic structures that
 #' were included in the model should be considered when calculating in-sample
 #' log-likelihoods. Defaults to `TRUE`
@@ -52,7 +52,8 @@
 #'              data = rbind(simdat$data_train,
 #'              simdat$data_test),
 #'              family = gaussian(),
-#'              chains = 2)
+#'              chains = 2,
+#'              silent = 2)
 #'
 #'# Inspect the model and calculate LOO
 #'conditional_effects(mod1)
@@ -65,14 +66,16 @@
 #'               formula = y ~ s(season, bs = 'cc', k = 6) +
 #'               s(season, series, bs = 'fs',
 #'               xt = list(bs = 'cc'), k = 4),
-#'               chains = 2)
+#'               chains = 2,
+#'               silent = 2)
 #'conditional_effects(mod2)
 #'loo(mod2)
 #'
 #'# Now add AR1 dynamic errors to mod2
 #'mod3 <- update(mod2,
 #'               trend_model = AR(),
-#'               chains = 2)
+#'               chains = 2,
+#'               silent = 2)
 #'conditional_effects(mod3)
 #'plot(mod3, type = 'trend')
 #'loo(mod3)

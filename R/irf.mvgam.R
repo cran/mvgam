@@ -19,11 +19,16 @@
 #'calculates how  each of the remaining processes in the latent VAR are expected
 #'to respond over the forecast horizon `h`. The function computes IRFs for all
 #'processes in the object and returns them in an array that can be plotted using
-#'the S3 `plot` function
+#'the S3 `plot` function. To inspect community-level metrics of stability using latent
+#'VAR processes, you can use the related \code{\link{stability}} function.
 #'@return An object of class \code{mvgam_irf} containing the posterior IRFs. This
 #'object can be used with the supplied S3 functions \code{plot}
 #'@author Nicholas J Clark
-#'@seealso \code{\link{VAR}}, \code{\link{plot.mvgam_irf}}
+#'@references PH Pesaran & Shin Yongcheol (1998).
+#'Generalized impulse response analysis in linear multivariate models.
+#'Economics Letters 58: 17–29.
+#'@seealso \code{\link{VAR}}, \code{\link{plot.mvgam_irf}}, \code{\link{stability}},
+#'\code{\link{fevd}}
 #' @examples
 #' \donttest{
 #' # Simulate some time series that follow a latent VAR(1) process
@@ -39,6 +44,7 @@
 #'              trend_model = VAR(cor = TRUE),
 #'              family = gaussian(),
 #'              data = simdat$data_train,
+#'              chains = 2,
 #'              silent = 2)
 #'
 #' # Calulate Generalized IRFs for each series
@@ -71,6 +77,11 @@ irf.mvgam <- function(object,
   beta_vars <- mcmc_chains(object$model_output, 'A')
   sigmas <- mcmc_chains(object$model_output, 'Sigma')
   n_series <- object$n_lv
+
+  if(is.null(n_series)){
+    n_series <- nlevels(object$obs_data$series)
+  }
+
   all_irfs <- lapply(seq_len(NROW(beta_vars)), function(draw){
 
     # Get necessary VAR parameters into a simple list format
@@ -207,23 +218,4 @@ var_psi = function(x, h=10){
     Psi[, , i] <- Phi[, , i] %*% P
   }
   return(Psi)
-}
-
-#' Forecast error decomposition
-#' @noRd
-var_fecov = function(x, h) {
-  sigma_u <- x$Sigma
-  sigma_yh <- array(NA, dim = c(x$K, x$K, h))
-  sigma_yh[, , 1] <- sigma_u
-  Phi <- var_phi(x, h = h)
-  if (h > 1) {
-    for (i in 2:h) {
-      temp <- matrix(0, nrow = x$K, ncol = x$K)
-      for (j in 2:i) {
-        temp <- temp + Phi[, , j] %*% sigma_u %*% t(Phi[, , j])
-      }
-      sigma_yh[, , i] <- temp + sigma_yh[, , 1]
-    }
-  }
-  return(sigma_yh)
 }

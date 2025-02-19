@@ -34,7 +34,7 @@ dat_test <- dat %>%
 
 test_that("cbind() syntax required for binomial()", {
   # Initial warning should be issued when calling binomial or beta-binomial
-  expect_warning(mvgam(cbind(y, ntrials) ~ s(series, bs = 're') +
+  expect_warning(mvgam(formula = cbind(y, ntrials) ~ s(series, bs = 're') +
                    gp(x, by = series, c = 5/4, k = 5),
                  family = binomial(),
                  data = dat_train,
@@ -107,7 +107,6 @@ test_that("binomial() post-processing works", {
   expect_no_error(ppc(mod, type = 'pit'))
   expect_no_error(ppc(mod, type = 'cdf'))
   expect_no_error(ppc(mod, type = 'rootogram'))
-
   expect_no_error(plot(mod, type = 'residuals'))
 
   expect_no_error(plot_mvgam_series(object = mod))
@@ -126,6 +125,16 @@ test_that("binomial() post-processing works", {
   expect_true(inherits(fc, 'mvgam_forecast'))
   expect_no_error(plot(fc))
   expect_no_error(plot(fc, realisations = TRUE))
+  expect_list(score(fc, score = 'drps'))
+  expect_error(
+    score(fc, score = 'brier'),
+    'cannot evaluate brier scores unless probability predictions are supplied. Use "type == expected" when forecasting instead'
+  )
+  fc <- forecast(mod, newdata = dat_test, type = 'expected')
+  expect_error(
+    score(fc, score = 'brier'),
+    'brier score only applicable for Bernoulli forecasts'
+  )
 
   expect_no_error(SW(plot(mod, type = 'smooths', trend_effects = TRUE)))
   expect_no_error(plot(mod, type = 'smooths',
@@ -165,7 +174,8 @@ test_that("binomial() post-processing works", {
                   silent = 2))
   fc <- forecast(mod)
   expect_true(inherits(fc, 'mvgam_forecast'))
-  expect_no_error(plot_mvgam_uncertainty(mod))
+  expect_error(plot_mvgam_uncertainty(mod))
+  expect_error(stability(mod))
 })
 
 # All tests should apply to beta_binomial as well
@@ -266,7 +276,7 @@ test_that("bernoulli() behaves appropriately", {
 
   # Also with a trend_formula
   mod <- mvgam(y ~ series,
-               trend_formula = ~ gp(x, by = trend, c = 5/4),
+               trend_formula = ~ gp(x, by = trend, c = 5/4, k = 5),
                trend_model = AR(),
                family = bernoulli(),
                data = dat_train,

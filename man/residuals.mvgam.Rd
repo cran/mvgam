@@ -2,7 +2,7 @@
 % Please edit documentation in R/residuals.mvgam.R
 \name{residuals.mvgam}
 \alias{residuals.mvgam}
-\title{Posterior draws of \code{mvgam} residuals}
+\title{Posterior draws of residuals from \pkg{mvgam} models}
 \usage{
 \method{residuals}{mvgam}(object, summary = TRUE, robust = FALSE, probs = c(0.025, 0.975), ...)
 }
@@ -21,8 +21,7 @@ Only used if \code{summary} is \code{TRUE}.}
 \item{probs}{The percentiles to be computed by the \code{quantile}
 function. Only used if \code{summary} is \code{TRUE}.}
 
-\item{...}{Further arguments passed to \code{\link[brms]{prepare_predictions}}
-that control several aspects of data validation and prediction.}
+\item{...}{ignored}
 }
 \value{
 An \code{array} of randomized quantile residual values.
@@ -51,15 +50,25 @@ in the residuals
 \examples{
 \donttest{
 # Simulate some data and fit a model
-simdat <- sim_mvgam(n_series = 1, trend_model = 'AR1')
+simdat <- sim_mvgam(n_series = 1, trend_model = AR())
 mod <- mvgam(y ~ s(season, bs = 'cc'),
              trend_model = AR(),
              noncentred = TRUE,
              data = simdat$data_train,
-             chains = 2)
+             chains = 2,
+             silent = 2)
 
 # Extract posterior residuals
 resids <- residuals(mod)
 str(resids)
+
+# Or add them directly to the observed data, along with fitted values
+augment(mod, robust = FALSE, probs = c(0.25, 0.75))
 }
+}
+\seealso{
+\code{\link{augment.mvgam}}
+}
+\author{
+Nicholas J Clark
 }

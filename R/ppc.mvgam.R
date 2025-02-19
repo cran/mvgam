@@ -1,4 +1,4 @@
-#'@title Plot mvgam posterior predictive checks for a specified series
+#'@title Plot conditional posterior predictive checks from \pkg{mvgam} models
 #'@importFrom stats quantile density ecdf formula terms
 #'@importFrom graphics hist abline box rect lines polygon par
 #'@importFrom grDevices rgb
@@ -26,16 +26,17 @@
 #'@param xlab label for x axis.
 #'@param ylab label for y axis.
 #'@param ... further \code{\link[graphics]{par}} graphical parameters.
-#'@details Posterior predictions are drawn from the fitted \code{mvgam} and compared against
+#'@details Conditional posterior predictions are drawn from the fitted \code{mvgam} and compared against
 #'the empirical distribution of the observed data for a specified series to help evaluate the model's
 #'ability to generate unbiased predictions. For all plots apart from `type = 'rootogram'`, posterior predictions
 #'can also be compared to out of sample observations as long as these observations were included as
 #''data_test' in the original model fit and supplied here. Rootograms are currently only plotted using the
 #''hanging' style.
 #'\cr
-#'Note that the predictions used for these plots are those that have been generated directly within
-#'the `mvgam()` model, so they can be misleading if the model included flexible dynamic trend components. For
-#'a broader range of posterior checks that are created using "new data" predictions, see
+#'Note that the predictions used for these plots are *conditional on the observed data*, i.e. they
+#'are those predictions that have been generated directly within
+#'the `mvgam()` model. They can be misleading if the model included flexible dynamic trend components. For
+#'a broader range of posterior checks that are created using *unconditional* "new data" predictions, see
 #'\code{\link{pp_check.mvgam}}
 #'@return A base \code{R} graphics plot showing either a posterior rootogram (for \code{type == 'rootogram'}),
 #'the predicted vs observed mean for the
@@ -54,7 +55,8 @@
 #' mod <- mvgam(y ~ s(x0) + s(x1) + s(x2) + s(x3),
 #'             data = dat,
 #'             family = gaussian(),
-#'             chains = 2)
+#'             chains = 2,
+#'             silent = 2)
 #'
 #' # Posterior checks
 #' ppc(mod, type = 'hist')
@@ -757,9 +759,9 @@ ppc.mvgam = function(object, newdata, data_test, series = 1, type = 'hist',
   }
 }
 
-#' Posterior Predictive Checks for \code{mvgam} Objects
+#' Posterior Predictive Checks for \code{mvgam} models
 #'
-#' Perform posterior predictive checks with the help
+#' Perform unconditional posterior predictive checks with the help
 #' of the \pkg{bayesplot} package.
 #'
 #' @aliases pp_check
@@ -777,20 +779,23 @@ ppc.mvgam = function(object, newdata, data_test, series = 1, type = 'hist',
 #' @return A ggplot object that can be further
 #'  customized using the \pkg{ggplot2} package.
 #'
-#' @details For a detailed explanation of each of the ppc functions,
+#' @details Unlike the conditional posterior checks provided by \code{\link{ppc}},
+#' This function computes *unconditional* posterior predictive checks (i.e. it generates
+#' predictions for fake data without considering the true observations associated with those
+#' fake data). For a detailed explanation of each of the ppc functions,
 #' see the \code{\link[bayesplot:PPC-overview]{PPC}}
 #' documentation of the \pkg{\link[bayesplot:bayesplot-package]{bayesplot}}
 #' package.
-#' @seealso \code{\link{ppc}} \code{\link{predict.mvgam}}
+#' @seealso \code{\link{ppc}}, \code{\link{predict.mvgam}}
 #' @examples
-#' \dontrun{
+#' \donttest{
 #'simdat <- sim_mvgam(seasonality = 'hierarchical')
 #'mod <- mvgam(y ~ series +
 #'               s(season, bs = 'cc', k = 6) +
 #'               s(season, series, bs = 'fs', k = 4),
 #'             data = simdat$data_train,
-#'             burnin = 300,
-#'             samples = 300)
+#'             chains = 2,
+#'             silent = 2)
 #'
 #'# Use pp_check(mod, type = "xyz") for a list of available plot types
 #'

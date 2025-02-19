@@ -1,4 +1,4 @@
-#' Helper functions for mvgam marginaleffects calculations
+#' Helper functions for \pkg{marginaleffects} calculations in \pkg{mvgam} models
 #' @importFrom stats coef model.frame
 #' @importFrom insight find_predictors get_data
 #' @importFrom marginaleffects get_coef set_coef get_vcov get_predict
@@ -24,6 +24,10 @@ NULL
 #' @export
 #' @importFrom marginaleffects predictions
 marginaleffects::predictions
+
+#' @export
+#' @importFrom marginaleffects avg_predictions
+marginaleffects::avg_predictions
 
 #' @export
 #' @importFrom marginaleffects plot_predictions
@@ -53,7 +57,15 @@ marginaleffects::datagrid
 #' @importFrom marginaleffects hypotheses
 marginaleffects::hypotheses
 
-#' Functions needed for working with marginaleffects
+#' @export
+#' @importFrom marginaleffects get_predict
+marginaleffects::get_predict
+
+#' @export
+#' @importFrom insight get_data
+insight::get_data
+
+#' Functions needed for working with \pkg{marginaleffects}
 #' @rdname mvgam_marginaleffects
 #' @export
 get_coef.mvgam <- function(model, trend_effects = FALSE, ...) {
@@ -118,16 +130,22 @@ get_predict.mvgam <- function(model, newdata,
                    process_error = process_error,
                    summary = FALSE,
                    ...)
-  out <- data.frame(
-    rowid = seq_len(NCOL(preds)),
-    estimate = apply(preds, 2, median))
+  if("rowid" %in% colnames(newdata)){
+    out <- data.frame(
+      rowid = newdata[["rowid"]],
+      estimate = apply(preds, 2, median))
+  } else {
+    out <- data.frame(
+      rowid = seq_len(NCOL(preds)),
+      estimate = apply(preds, 2, median))
+  }
+
 
   attr(out, "posterior_draws") <- t(preds)
   return(out)
 }
 
-
-#' Functions needed for getting data / objects with insight
+#' Functions needed for getting data / objects with \pkg{insight}
 #' @rdname mvgam_marginaleffects
 #' @export
 get_data.mvgam = function (x, source = "environment", verbose = TRUE, ...) {
@@ -164,11 +182,10 @@ get_data.mvgam = function (x, source = "environment", verbose = TRUE, ...) {
                                                  unique(x$trend_map$trend)))
 
       # Trend-level data, before any slicing that took place
-      trend_level_data <- data.frame(trend_series = trend_indicators,
-                                     series = orig_dat$series,
-                                     time = orig_dat$time,
-                                     y = orig_dat$y,
-                                     row_num = 1:length(x$obs_data$index..time..index))
+      orig_dat %>%
+        dplyr::bind_cols(data.frame(trend_series = trend_indicators,
+                                    row_num = 1:length(x$obs_data$index..time..index))) ->
+        trend_level_data
 
       # # We only kept one time observation per trend
       trend_level_data %>%
@@ -366,6 +383,36 @@ find_predictors.mvgam = function(x, effects = c('fixed',
     }
   }
 
+  # Any other required variables, needed for grouped models
+  if(!inherits(attr(x$model_data, 'trend_model'), 'mvgam_trend')){
+    trend_model <- list(trend_model = attr(x$model_data, 'trend_model'),
+                        unit = 'time',
+                        gr = 'NA',
+                        subgr = 'series')
+  } else {
+    trend_model <- attr(x$model_data, 'trend_model')
+  }
+  other_vars <- c(trend_model$unit,
+                  trend_model$gr,
+                  trend_model$subgr)
+  if(!is.null(attr(x$model_data, 'prepped_trend_model'))){
+    prepped_model <- attr(x$model_data, 'prepped_trend_model')
+    other_vars <- c(other_vars,
+                    c(prepped_model$unit,
+                      prepped_model$gr,
+                      prepped_model$subgr))
+  }
+
+  if(flatten){
+    other_vars <- setdiff(unique(other_vars),
+                          c('NA', preds))
+    preds <- c(preds, other_vars)
+  } else {
+    other_vars <- setdiff(unique(other_vars),
+                          c('NA', preds$conditional))
+    preds$conditional <- c(preds$conditional, other_vars)
+  }
+
   return(preds)
 }
 
@@ -413,6 +460,36 @@ find_predictors.mvgam_prefit = function(x, effects = c('fixed',
     } else {
       preds$conditional <- c(preds$conditional, 'cap')
     }
+  }
+
+  # Any other required variables, needed for grouped models
+  if(!inherits(attr(x$model_data, 'trend_model'), 'mvgam_trend')){
+    trend_model <- list(trend_model = attr(x$model_data, 'trend_model'),
+                        unit = 'time',
+                        gr = 'NA',
+                        subgr = 'series')
+  } else {
+    trend_model <- attr(x$model_data, 'trend_model')
+  }
+  other_vars <- c(trend_model$unit,
+                  trend_model$gr,
+                  trend_model$subgr)
+  if(!is.null(attr(x$model_data, 'prepped_trend_model'))){
+    prepped_model <- attr(x$model_data, 'prepped_trend_model')
+    other_vars <- c(other_vars,
+                    c(prepped_model$unit,
+                      prepped_model$gr,
+                      prepped_model$subgr))
+  }
+
+  if(flatten){
+    other_vars <- setdiff(unique(other_vars),
+                          c('NA', preds))
+    preds <- c(preds, other_vars)
+  } else {
+    other_vars <- setdiff(unique(other_vars),
+                          c('NA', preds$conditional))
+    preds$conditional <- c(preds$conditional, other_vars)
   }
 
   return(preds)
