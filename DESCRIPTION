@@ -1,7 +1,7 @@
 Package: mvgam
 Title: Multivariate (Dynamic) Generalized Additive Models
-Version: 1.1.4
-Date: 2025-02-18
+Version: 1.1.51
+Date: 2025-03-14
 Authors@R: c(person("Nicholas J", "Clark", , "nicholas.j.clark1214@gmail.com", 
                     role = c("aut", "cre"), comment = c(ORCID = "0000-0001-7131-3301")),
              person("Sarah", "Heaps", role = c("ctb"),
@@ -10,7 +10,7 @@ Authors@R: c(person("Nicholas J", "Clark", , "nicholas.j.clark1214@gmail.com",
                     comment = c("broom enhancements", ORCID = "0009-0006-8977-9285")),
              person("Matthijs", "Hollanders", role = c("ctb"),
                     comment = c("ggplot visualizations", ORCID = "0000-0003-0796-1018")))
-Description: Fit Bayesian Dynamic Generalized Additive Models to multivariate observations. Users can build nonlinear State-Space models that can incorporate semiparametric effects in observation and process components, using a wide range of observation families. Estimation is performed using Markov Chain Monte Carlo with Hamiltonian Monte Carlo in the software 'Stan'. References: Clark & Wells (2022) <doi:10.1111/2041-210X.13974>.
+Description: Fit Bayesian Dynamic Generalized Additive Models to multivariate observations. Users can build nonlinear State-Space models that can incorporate semiparametric effects in observation and process components, using a wide range of observation families. Estimation is performed using Markov Chain Monte Carlo with Hamiltonian Monte Carlo in the software 'Stan'. References: Clark & Wells (2023) <doi:10.1111/2041-210X.13974>.
 URL: https://github.com/nicholasjclark/mvgam,
         https://nicholasjclark.github.io/mvgam/
 BugReports: https://github.com/nicholasjclark/mvgam/issues
@@ -33,7 +33,7 @@ Additional_repositories: https://mc-stan.org/r-packages/
 LinkingTo: Rcpp, RcppArmadillo
 VignetteBuilder: knitr
 NeedsCompilation: yes
-Packaged: 2025-02-18 23:50:39 UTC; uqnclar2
+Packaged: 2025-03-14 05:44:31 UTC; uqnclar2
 Author: Nicholas J Clark [aut, cre] (<https://orcid.org/0000-0001-7131-3301>),
   Sarah Heaps [ctb] (VARMA parameterisations,
     <https://orcid.org/0000-0002-5543-037X>),
@@ -43,4 +43,4 @@ Author: Nicholas J Clark [aut, cre] (<https://orcid.org/0000-0001-7131-3301>),
     <https://orcid.org/0000-0003-0796-1018>)
 Maintainer: Nicholas J Clark <nicholas.j.clark1214@gmail.com>
 Repository: CRAN
-Date/Publication: 2025-02-19 01:00:02 UTC
+Date/Publication: 2025-03-14 08:40:02 UTC

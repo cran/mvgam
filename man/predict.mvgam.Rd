@@ -9,7 +9,7 @@
   newdata,
   data_test,
   type = "link",
-  process_error = TRUE,
+  process_error = FALSE,
   summary = TRUE,
   robust = FALSE,
   probs = c(0.025, 0.975),
@@ -120,11 +120,17 @@ mod1 <- mvgam(y ~ s(season, bs = 'cc', k = 6),
              silent = 2)
 
 # Generate predictions against observed data
-preds <- predict(mod1, summary = TRUE)
+preds <- predict(mod1,
+                summary = TRUE)
 head(preds)
 
 # Generate predictions against test data
-preds <- predict(mod1, newdata = simdat$data_test, summary = TRUE)
+preds <- predict(mod1,
+                newdata = simdat$data_test,
+                summary = TRUE)
 head(preds)
 }
+}
+\author{
+Nicholas J Clark
 }
